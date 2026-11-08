@@ -39,7 +39,7 @@ Worktree `.claude/worktrees/new-landing-r4`, branch `claude/new-landing-r4`, fro
 
 ## Open with the owner
 
-- **Team portraits.** The zip holds the hero and six zooms only. The people scene ships with placeholder monograms until two portraits arrive (one line each in `scenes.ts`).
+- **Team portraits.** Done 2026-11-08: the owner sent both, black and white, 400×400 (`assets/new/keir.webp`, `sadie.webp`). The comma window draws Sadie's up to about 390 px tall, so on a retina screen a 400 px source is upscaled about 2×: a larger original would be sharper.
 - **Hero copy.** Suggested in `design.md`, with two alternatives.
 - **A larger hero file.** 1086×1448 px; the zooms magnify it up to about 1.6×, so a 2× export would keep the details sharp on retina screens.
 

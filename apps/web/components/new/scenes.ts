@@ -1,6 +1,8 @@
 import type { StaticImageData } from "next/image"
 
 import hero from "@/assets/new/hero.webp"
+import keir from "@/assets/new/keir.webp"
+import sadie from "@/assets/new/sadie.webp"
 import type { Shape, Window, WindowLayout } from "@/lib/stage-math"
 
 /**
@@ -128,31 +130,35 @@ export const WINDOW_LAYOUTS = {
 
 export type Person = {
   name: string
-  initials: string
   line: string
   colour: string
   /** The portrait's window: the logo's square or its comma. */
   shape: Shape
-  /** Until the photographs arrive, the window shows the initials. */
-  portrait: StaticImageData | null
+  /** A black and white photograph, square. */
+  portrait: StaticImageData
+  /**
+   * The photograph's `object-position` in the window. The comma is narrower
+   * than the photograph and crops its sides: this puts the face in its head.
+   */
+  position: string
 }
 
 export const PEOPLE: readonly Person[] = [
   {
     name: "Keir Regan-Alexander",
-    initials: "KRA",
     line: "Has helped more than 100 AEC firms develop their approach to AI over the past three years.",
     colour: GREEN,
     shape: "square",
-    portrait: null,
+    portrait: keir,
+    position: "50% 50%",
   },
   {
     name: "Sadie Morgan OBE",
-    initials: "SM",
     line: "Co-founder of Stirling Prize-winning dRMM and founder of the Quality of Life Foundation.",
     colour: SKY,
     shape: "comma",
-    portrait: null,
+    portrait: sadie,
+    position: "30% 50%",
   },
 ]
 

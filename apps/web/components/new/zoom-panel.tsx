@@ -416,7 +416,9 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
         <GridFrame>Answerable AP</GridFrame>
       </div>
 
-      <div className="cols:grid-cols-1 cols:grid-rows-2 pointer-events-none absolute inset-0 grid grid-cols-2">
+      {/* A pixel past the panel's clip on every side: at a fractional edge
+          the halves' layers round short and the picture shows as a line. */}
+      <div className="cols:grid-cols-1 cols:grid-rows-2 pointer-events-none absolute -inset-px grid grid-cols-2">
         {PEOPLE.map((person, index) => (
           <Portrait
             key={person.name}
@@ -471,34 +473,15 @@ function Portrait({
         )}
         style={square ? undefined : COMMA_MASK}
       >
-        {person.portrait ? (
-          <Image
-            src={person.portrait}
-            alt={`Portrait of ${person.name}`}
-            fill
-            sizes="(min-width: 64rem) 25vw, 50vw"
-            className="object-cover"
-          />
-        ) : (
-          <div
-            aria-hidden="true"
-            className="absolute inset-0"
-            style={{
-              backgroundColor: `color-mix(in oklab, ${person.colour} 55%, white)`,
-            }}
-          >
-            {/* In the comma, the head is its top two thirds. */}
-            <span
-              className={cn(
-                "absolute inset-x-0 top-0 grid place-items-center font-bold tracking-[-0.02em] text-black",
-                square ? "h-full" : "h-[66.4%]",
-              )}
-              style={{ fontSize: "clamp(18px, 9cqh, 40px)" }}
-            >
-              {person.initials}
-            </span>
-          </div>
-        )}
+        <Image
+          src={person.portrait}
+          alt={`Portrait of ${person.name}`}
+          fill
+          sizes="(min-width: 64rem) 25vw, 50vw"
+          quality={85}
+          className="object-cover"
+          style={{ objectPosition: person.position }}
+        />
       </div>
     </div>
   )
