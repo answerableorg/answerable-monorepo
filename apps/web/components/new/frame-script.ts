@@ -8,3 +8,10 @@
  * zoom changes the gutter.
  */
 export const FRAME_SCRIPT = `(function(){var r=document.documentElement;function f(){var g=innerWidth-document.body.getBoundingClientRect().width;r.style.setProperty("--gutter",g+"px");r.style.setProperty("--frame",(g||16)+"px")}f();addEventListener("DOMContentLoaded",f);addEventListener("load",f);addEventListener("resize",f)})()`
+
+/**
+ * Turns the /new stage on before first paint: `data-stage` on `<html>` is what
+ * the `stage:` variant and the snap points key on, so without JS the page stays
+ * a plain column. The page always opens on the hero, as the loop expects.
+ */
+export const STAGE_SCRIPT = `(function(){var r=document.documentElement;if(matchMedia("print").matches)return;r.setAttribute("data-stage","");try{history.scrollRestoration="manual"}catch(e){}})()`

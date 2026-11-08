@@ -39,7 +39,7 @@
 
 - Owner and cofounder feedback (quoted in `round-3/task_plan.md`): no click to expand, the image follows the scroll, the rectangular AP badge back, words large and in the middle, business name and headcount on the form.
 - Measured the live page at five window sizes, white-text contrast in the middle of each crop, and how the sheet library treats formula strings (`round-3/findings.md`). Wrote the design with decisions E1–E4 (`round-3/design.md`). No code.
-- Report published: https://claude.ai/artifact/3yjMeYyeEv9uyom5tpA2YV (working scroll mock-up, the five panels, contrast and scroll tables, E1–E4). 
+- Report published: https://claude.ai/artifact/3yjMeYyeEv9uyom5tpA2YV (working scroll mock-up, the five panels, contrast and scroll tables, E1–E4).
 - Owner answered E1–E4 with the recommendations: images in the flow on phones, words in the middle on every panel, the six values on the left, business fields required with headcount bands.
 - Owner: build it, show before landing. Worktree `.claude/worktrees/new-landing-r3`, branch `claude/new-landing-r3`, from origin/main 583454a6 (local main is 4 commits ahead with unpushed ID and Next work, so it is not the base). Built inline, not through Codex: about 15 files with tight browser checks. Temporary `web-r3` entry in the main checkout's `.claude/launch.json`, to revert.
 - Measured on the build, by walking the real page in 5 px steps. Scroll per panel (hero, AI Lead, values, people, AP): 1280×720 60/295/400/360/745; 1440×900 55/280/370/340/615; 1920×1080 50/260/340/315/515; 2560×1440 40/210/285/255/330. Order always hero to AP. One `h1`, no sideways scroll, no console errors. Phone 375×812: page 4574 px, join at 3731.
@@ -49,3 +49,12 @@
 - Owner approved. Landed on main, only this work: local main's four unpushed commits stay local.
 - Owner: remove the AI Lead illustration on desktop and phones, "it's too much". The panel, its phone banner and `bannerZoom` are gone; the section keeps its visible heading, and the hero panel stays until the values section.
 - Owner: the Answerable AP stamp goes above "Join the founding cohort" at every width, not on its line from lg.
+
+## 2026-11-08, round 4
+
+- Owner feedback (quoted in `round-4/task_plan.md`): reads like a slide deck, too much copy, one scroll-bound sticky section at a time, form first, a seamless loop from the bottom to the top, the narrative PDF, the team, the hero's zooms per value, a value-first hero, no stamp above the form, phones as good as desktop.
+- Read the PDF and the seven images; sampled the zoom fields (the brand's four highlights). No portraits in the zip. Wrote `round-4/` plan, findings and design. Worktree `.claude/worktrees/new-landing-r4`, branch `claude/new-landing-r4`, from origin/main 9e0b3cde. Owner said go ahead, so building without a report first.
+- Built inline in the worktree: `stage.tsx` (engine), `zoom-panel.tsx`, `scenes.ts`, `cohort-form.tsx`, `lib/stage-math.ts` with tests, `lib/waitlist-rules.ts`; the old panels, landing, register link, scroll rule and both photographs deleted; `WaitlistForm` lost its cohort mode. Temporary `web-r4` entry in the main checkout's `.claude/launch.json`.
+- Found and fixed while measuring: phone scenes overflowed (band now gives way, spare lines drop, rail only in columns); phone landscape overflowed (`cols` covers it); the form's second step did not fit (band folds); value statements ghosted at the midpoint (odometer roll in a clipped box); portrait halves opened a gap (one sheet); a failed submit emptied the fields (transition submit); rail squares did nothing (delegation).
+- Measured: every scene fits from 375×667 to 2560×1440; real input walks one scene per gesture and loops to y 0; form, no-JS, reduced motion and keyboard as in `round-4/findings.md`. iOS Safari in the simulator renders the hero; gestures wait on the owner's grant.
+- Gates: typecheck 0, lint 0, web test 145 pass, build 0 (`/new` static, one `h1`), knip clean in `apps/web`. Committed on `claude/new-landing-r4`; not pushed. Waiting for the owner: approval to land, two portraits, the hero line.

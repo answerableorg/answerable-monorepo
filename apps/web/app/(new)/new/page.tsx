@@ -1,11 +1,13 @@
+import type { ReactNode } from "react"
+
 import { BulletSquare } from "@/components/bullet-square"
-import { GridFrame } from "@/components/new/grid-frame"
-import { Landing } from "@/components/new/landing"
+import { CohortForm } from "@/components/new/cohort-form"
 import { Lockup } from "@/components/new/lockup"
-import { LandingSection } from "@/components/new/panel"
-import { RegisterLink } from "@/components/new/register-link"
-import { WaitlistForm } from "@/components/waitlist-form"
+import { PEOPLE, VALUES, VALUES_FROM } from "@/components/new/scenes"
+import { Stage } from "@/components/new/stage"
 import { createMetadata, SITE } from "@/lib/metadata"
+import { buttonVariants } from "@answerable/ui/lib/button"
+import { cn } from "@answerable/ui/lib/utils"
 
 export const metadata = createMetadata({
   pathname: "/new",
@@ -24,35 +26,22 @@ const structuredData = {
   })),
 }
 
-const VALUES = [
-  "We hold ourselves answerable for our work.",
-  "We use AI only where we are competent to do so.",
-  "We are honest about how we use AI.",
-  "We respect the intellectual and creative work of others.",
-  "We protect the information entrusted to us.",
-  "We use AI to strengthen our professions, not to diminish them.",
+const BENEFITS = [
+  "The skills to lead your practice’s approach to AI",
+  "An AI policy and handbook shaped around how you work",
+  "A credential your clients can verify",
+  "A community of AI Leads beyond the programme",
 ]
 
-const ACCREDITATION_BENEFITS = [
-  {
-    lead: "The skills to lead your practice’s approach to AI.",
-    body: "Practical training grounded in Answerable’s six core values, equipping you to guide decisions and help colleagues use AI well.",
-  },
-  {
-    lead: "A policy suite your practice can put to work.",
-    body: "Develop your AI policy and handbook with guided resources and templates, shaped around your practice rather than written from scratch.",
-  },
-  {
-    lead: "An accreditation others can verify.",
-    body: "Demonstrate your competence through formal examination, and take your place on the public register of Accredited Professionals.",
-  },
-  {
-    lead: "A community to keep learning with.",
-    body: "Exchange experience, explore difficult questions, and continue developing alongside fellow AI Leads beyond the programme.",
-  },
-]
-
+const TITLE =
+  "text-[22px]/7 font-bold tracking-[-0.02em] text-balance lg:text-[28px]/8 min-[1800px]:text-[32px]/10"
 const BODY = "text-base/6"
+const MUTED = "text-muted-foreground"
+const KICKER = "text-sm/6 font-bold"
+/** A closing line dropped where the screen is short of room. */
+const SPARE = "[@media(height<50rem)]:band:hidden [@media(height<30rem)]:hidden"
+/** In the form's second step a short screen keeps only the form. */
+const FORM_ONLY = "[@media(height<30rem)]:group-data-[form-step=2]/scene:hidden"
 
 export default function Page() {
   return (
@@ -63,150 +52,194 @@ export default function Page() {
           __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
         }}
       />
-      <Landing
-        header={
-          <header className="flex items-baseline justify-between py-6 lg:py-8">
-            <Lockup />
-            <RegisterLink />
-          </header>
-        }
-        hero={
-          <p className={`${BODY} text-muted-foreground`}>
-            The people who change a practice aren’t always the first to try
-            something new. They’re the ones who make it worthwhile for everyone
-            else. AI needs that kind of leadership: grounded in the work,
-            generous with colleagues, and clear about what good looks like.
-          </p>
-        }
-        join={
-          <section
-            aria-labelledby="accreditation-heading"
-            id="join"
-            className="scroll-mt-24 lg:scroll-mt-28"
+      <Stage logo={<Lockup />}>
+        <Scene from={0} id="join" labelledBy="hero-heading">
+          <h1
+            data-line
+            id="hero-heading"
+            className={cn(
+              "text-[28px]/8 font-bold tracking-[-0.02em] text-balance min-[1800px]:text-[44px]/12 lg:text-[36px]/10",
+              FORM_ONLY,
+            )}
           >
-            <div className="flex flex-col items-start gap-3">
-              <GridFrame className="text-sm font-bold">Answerable AP</GridFrame>
-              <h2 id="accreditation-heading" className="text-lg/6 font-bold">
-                Join the founding cohort
-              </h2>
-            </div>
-            <p className={`${BODY} text-muted-foreground mt-2`}>
-              Be among the first to earn the Answerable AP credential and join a
-              professional community that continues beyond the programme.
-            </p>
-            <p className={`${BODY} text-muted-foreground mt-4`}>
-              We’re limiting the founding cohort to give participants the
-              support and assessment the programme requires. Leave your details
-              and we’ll send you programme details and let you know when
-              enrolment opens.
-            </p>
-            <div className="mt-4">
-              <WaitlistForm autoFocus={false} cohort />
-            </div>
-            <p className="text-muted-foreground mt-2 text-sm/6">
-              Registering interest does not reserve a place or commit you to
-              enrol.
-            </p>
-          </section>
-        }
-        footer={
-          <footer className="text-muted-foreground mt-12 py-8 text-sm/6 lg:mt-16">
-            <p>© 2026 Answerable · answerable.org</p>
-          </footer>
-        }
-      >
-        <LandingSection title="The AI Lead role">
-          <p className={BODY}>
-            When a client asks how your practice uses AI, the answer should give
-            them another reason to choose you.
+            Make your use of AI a reason clients choose you.
+          </h1>
+          <p
+            data-line
+            className={cn(
+              BODY,
+              MUTED,
+              "band:group-data-[form-step=2]/scene:hidden [@media(height<37rem)]:band:hidden mt-3 lg:mt-4",
+              FORM_ONLY,
+            )}
+          >
+            Answerable trains and accredits the people who lead AI in
+            professional practices. Put yours forward for the founding cohort.
           </p>
-          <p className={BODY}>
-            An AI Lead helps build the substance behind that answer: better ways
-            of working, colleagues who know how to use the tools well, and
-            standards the practice can explain and uphold.
-          </p>
-          <p className={BODY}>
-            They bring useful discoveries beyond the people who made them. They
-            connect everyday experimentation with decisions about the practice’s
-            future. And they help make the care behind the work visible to the
-            people commissioning it.
-          </p>
-        </LandingSection>
+          <div
+            data-line
+            className="mt-6 lg:mt-8 [@media(height<30rem)]:mt-4 [@media(height<30rem)]:group-data-[form-step=2]/scene:mt-0"
+          >
+            <CohortForm />
+          </div>
+        </Scene>
 
-        <LandingSection
-          panelKey="core-values"
-          title="Built upon six core values"
-        >
-          <p className={BODY}>
-            Everything we teach, assess, and work towards together is rooted in
-            six commitments. They connect the principles that make our work
-            professional with the decisions we face when using AI.
+        <Scene from={1} labelledBy="programme-heading">
+          <p data-line className={KICKER}>
+            The Answerable AP programme
           </p>
-          <ol className="flex list-none flex-col gap-4">
+          <h2 data-line id="programme-heading" className={cn(TITLE, "mt-2")}>
+            One accredited AI Lead. A practice that can answer for its AI.
+          </h2>
+          <ul className="cols:mt-6 cols:gap-2 mt-4 flex flex-col gap-1">
+            {BENEFITS.map((benefit) => (
+              <li key={benefit} data-line className={cn(BODY, "flex gap-3")}>
+                <BulletSquare />
+                {benefit}
+              </li>
+            ))}
+          </ul>
+          <p data-line className={cn(BODY, MUTED, "mt-6", SPARE)}>
+            It works across whichever AI tools you use, now and in the future.
+          </p>
+        </Scene>
+
+        <Scene
+          from={VALUES_FROM}
+          to={VALUES_FROM + VALUES.length - 1}
+          labelledBy="values-heading"
+        >
+          <div data-line>
+            <h2 id="values-heading" className={KICKER}>
+              Built upon six core values
+            </h2>
+            <p className={cn("text-sm/6", MUTED)}>
+              Everything we teach and assess is rooted in six commitments.
+            </p>
+          </div>
+          {/* The index: a square of colour slides from number to number. */}
+          <div
+            data-line
+            aria-hidden="true"
+            className="stage:flex relative mt-6 hidden gap-2"
+          >
+            <span
+              data-highlight
+              className="absolute top-0 left-0 size-8"
+              style={{ backgroundColor: VALUES[0]!.colour }}
+            />
             {VALUES.map((value, index) => (
-              <li key={value} className="flex items-baseline gap-4">
+              <span
+                key={value.text}
+                data-mark
+                data-colour={value.colour}
+                className="relative grid size-8 place-items-center text-sm font-black tabular-nums"
+              >
+                {index + 1}
+              </span>
+            ))}
+          </div>
+          <ol
+            data-line
+            className="stage:grid stage:gap-0 stage:overflow-hidden mt-6 flex flex-col gap-4"
+          >
+            {VALUES.map((value, index) => (
+              <li
+                key={value.text}
+                data-step
+                className="stage:[grid-area:1/1] flex gap-3 text-[24px]/8 font-bold tracking-[-0.02em] text-balance min-[1800px]:text-[40px]/12 lg:text-[32px]/10"
+              >
                 <span
-                  aria-hidden="true"
-                  className="w-8 shrink-0 text-2xl font-black tabular-nums"
+                  className="stage:sr-only font-black tabular-nums"
+                  style={{ color: value.colour }}
                 >
                   {index + 1}
                 </span>
-                <p className={BODY}>{value}</p>
+                <span>{value.text}</span>
               </li>
             ))}
           </ol>
-        </LandingSection>
+        </Scene>
 
-        <LandingSection
-          panelKey="people"
-          title="The people behind the programme"
-        >
-          <p className={BODY}>
-            Keir Regan-Alexander has spent the past three years helping more
-            than 100 AEC firms develop their approach to AI. He has worked
-            alongside professionals establishing policies, bringing colleagues
-            into the conversation, and stepping into the AI Lead role. The
-            programme draws on what they have learned together.
-          </p>
-          <p className={BODY}>
-            Sadie Morgan OBE is co-founder of Stirling Prize-winning dRMM and
-            founder of the Quality of Life Foundation. Her career brings
-            together excellence in practice and a commitment to what good design
-            makes possible for others. At Answerable, she is helping shape an
-            approach to AI worthy of the professions adopting it and the people
-            they serve.
-          </p>
-          <p className={BODY}>
-            Together, they are developing a programme for professionals who want
-            to take an active part in that future.
-          </p>
-        </LandingSection>
-
-        <LandingSection
-          panelKey="accredited-professional"
-          title="Become an Answerable Accredited Professional"
-        >
-          <p className={BODY}>
-            The founding cohort is a structured programme for professionals
-            stepping into the AI Lead role. You’ll get:
-          </p>
-          <ul className="flex flex-col gap-4">
-            {ACCREDITATION_BENEFITS.map(({ lead, body }) => (
-              <li key={lead} className="flex gap-2">
-                <BulletSquare />
+        <Scene from={8} labelledBy="people-heading">
+          <h2 data-line id="people-heading" className={TITLE}>
+            The people behind the programme
+          </h2>
+          <ul className="cols:mt-6 cols:gap-4 mt-4 flex flex-col gap-3">
+            {PEOPLE.map((person) => (
+              <li key={person.name} data-line className="flex gap-3">
+                {/* The colour of the person's portrait on the image. */}
+                <span
+                  aria-hidden="true"
+                  className="mt-2 size-2 shrink-0"
+                  style={{ backgroundColor: person.colour }}
+                />
                 <div>
-                  <p className={`${BODY} font-bold`}>{lead}</p>
-                  <p className={BODY}>{body}</p>
+                  <p className={cn(BODY, "font-bold")}>{person.name}</p>
+                  <p className={cn(BODY, MUTED)}>{person.line}</p>
                 </div>
               </li>
             ))}
           </ul>
-          <p className={BODY}>
-            You’ll develop an approach you can apply across whichever AI tools
-            your practice uses, now and in the future.
+          <p data-line className={cn(BODY, "mt-6", SPARE)}>
+            Together, they are developing a programme for professionals who want
+            to take an active part in how AI shapes their work.
           </p>
-        </LandingSection>
-      </Landing>
+        </Scene>
+
+        <Scene from={9} labelledBy="cohort-heading">
+          <h2 data-line id="cohort-heading" className={TITLE}>
+            Join the founding cohort
+          </h2>
+          <p data-line className={cn(BODY, MUTED, "mt-3")}>
+            Be among the first to earn the Answerable AP credential. We’re
+            keeping the cohort small, so every participant gets the support and
+            assessment the programme requires.
+          </p>
+          <div data-line className="mt-6">
+            <a
+              href="#join"
+              data-go="0"
+              className={buttonVariants({ className: "gap-1.5" })}
+            >
+              Register your interest
+              <span aria-hidden="true">↑</span>
+            </a>
+          </div>
+        </Scene>
+      </Stage>
     </>
+  )
+}
+
+/**
+ * One scene of the stage. Without the stage it is a section in the column;
+ * with it, it fills the copy area, its lines moved by the scroll (`data-line`).
+ * In the column it sits in the middle; under a band, at the top.
+ */
+function Scene({
+  from,
+  to = from,
+  id,
+  labelledBy,
+  children,
+}: {
+  from: number
+  to?: number
+  id?: string
+  labelledBy: string
+  children: ReactNode
+}) {
+  return (
+    <section
+      id={id}
+      data-scene
+      data-from={from}
+      data-to={to}
+      aria-labelledby={labelledBy}
+      className="group/scene stage:absolute stage:inset-0 stage:band:pt-5 stage:cols:justify-center flex flex-col"
+    >
+      {children}
+    </section>
   )
 }

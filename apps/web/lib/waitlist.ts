@@ -1,10 +1,13 @@
 import { findCountry } from "@answerable/countries"
 import { isHeadcount } from "./headcounts"
+import { EMAIL_PATTERN, MESSAGES } from "./waitlist-rules"
 import {
   createSheetsClient,
   parseSheetsConfig,
   type SheetsDeps,
 } from "./sheets"
+
+export { MESSAGES }
 
 export type WaitlistInput = {
   email: string
@@ -21,17 +24,6 @@ export type WaitlistState =
   | { status: "error"; errors?: WaitlistErrors; message?: string }
   | { status: "success"; email: string }
 
-export const MESSAGES = {
-  country: "Please select your country.",
-  businessName: "Please enter your business name.",
-  businessNameLong: "Please shorten your business name to 200 characters.",
-  businessHeadcount: "Please select your business headcount.",
-  empty: "Please enter your email address.",
-  invalid: "That doesn't look like a valid email address.",
-  failed: "Something went wrong on our side. Please try again in a moment.",
-} as const
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EMAIL_MAX_LENGTH = 254
 const BUSINESS_NAME_MAX_LENGTH = 200
 const ERROR_MESSAGE_LIMIT = 500

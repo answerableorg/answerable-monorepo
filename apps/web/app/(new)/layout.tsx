@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { Public_Sans } from "next/font/google"
 
 import "../globals.css"
-import { FRAME_SCRIPT } from "@/components/new/frame-script"
+import { FRAME_SCRIPT, STAGE_SCRIPT } from "@/components/new/frame-script"
 import { Splash, SPLASH_COLOUR_SCRIPT } from "@/components/new/splash"
 import { createMetadata, SITE } from "@/lib/metadata"
 import { cn } from "@answerable/ui/lib/utils"
@@ -26,8 +26,9 @@ export default function NewLayout({
   children: React.ReactNode
 }>) {
   return (
-    // The scripts below set `--splash`, `--gutter` and `--frame` on <html>
-    // before first paint, which the server HTML cannot match. The scrollbar's gutter is always kept, so
+    // The scripts below set `--splash`, `--gutter`, `--frame` and
+    // `data-stage` on <html> before first paint, which the server HTML cannot
+    // match. The scrollbar's gutter is always kept, so
     // the columns never narrow when the scrollbar appears.
     <html
       lang="en"
@@ -40,6 +41,7 @@ export default function NewLayout({
       <body>
         <script dangerouslySetInnerHTML={{ __html: SPLASH_COLOUR_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: FRAME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: STAGE_SCRIPT }} />
         <Splash />
         {children}
       </body>

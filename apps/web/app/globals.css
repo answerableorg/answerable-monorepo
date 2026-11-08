@@ -3,6 +3,22 @@
 @import "fumadocs-ui/css/preset.css";
 @import "fumadocs-openapi/css/preset.css";
 
+/* The /new stage is on: `STAGE_SCRIPT` marked <html> before first paint. */
+@custom-variant stage (&:where([data-stage], [data-stage] *));
+/* /new's two shapes: copy beside the picture on wide windows, landscape
+   phones included (`cols`), or the picture as a band above it (`band`). The
+   zoom panel's `COLUMN_QUERY` is the same query. */
+@custom-variant cols {
+  @media (width >= 64rem), (width >= 40rem) and (aspect-ratio >= 4/3) {
+    @slot;
+  }
+}
+@custom-variant band {
+  @media (width < 40rem), (width < 64rem) and (aspect-ratio < 4/3) {
+    @slot;
+  }
+}
+
 /*
  * Hero mosaic entrance: a quick fade-in, staggered per tile via an inline
  * animation-delay. `backwards` keeps pre-delay tiles invisible without JS.
@@ -169,5 +185,30 @@
     .splash {
       display: none;
     }
+  }
+}
+
+/*
+ * The /new stage (components/new/stage.tsx): the root scroller snaps to one
+ * snap point a screen, except while a phone's keyboard is up. Until the engine
+ * runs only the hero shows, and afterwards only the scene on screen takes
+ * pointer events.
+ */
+html[data-stage] {
+  scroll-snap-type: y mandatory;
+}
+html[data-stage][data-frozen] {
+  scroll-snap-type: none;
+}
+html[data-stage]:not([data-engine]) [data-scene]:not([data-from="0"]) {
+  opacity: 0;
+}
+html[data-engine] [data-scene]:not([data-current]) {
+  pointer-events: none;
+}
+/* Under a band, the form's second step needs the screen: the band folds. */
+@variant band {
+  html[data-stage] [data-stage-grid]:has([data-current][data-form-step="2"]) {
+    grid-template-rows: auto 0px minmax(0, 1fr);
   }
 }
