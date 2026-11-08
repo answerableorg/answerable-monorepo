@@ -10,8 +10,7 @@ export const clamp = (value: number, min: number, max: number) =>
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
 /** Interpolates on a log scale, so sizes and zooms change at an even pace. */
-const lerpLog = (a: number, b: number, t: number) =>
-  a * Math.pow(b / a, t)
+const lerpLog = (a: number, b: number, t: number) => a * Math.pow(b / a, t)
 
 /** Hermite smoothstep from `edge0` to `edge1`. */
 function smoothstep(edge0: number, edge1: number, x: number) {
@@ -101,22 +100,48 @@ export function rollFrame(offset: number): { opacity: number; shift: number } {
 export type Size = { w: number; h: number }
 export type Point = readonly [number, number]
 
-/** A view of the illustration through the comma: what it shows and how big. */
+/**
+ * The comma of the logo, in its own units (`COMMA_PATH`): a head 48 wide and
+ * 47.835 tall centred on (1128, 239.9155), and below it a band 24.167 tall
+ * that holds the tail. The window draws the head as a plain rectangle clip and
+ * the band as a second one, with two shapes in the field's colour carving the
+ * tail out of it, so nothing is masked or repainted as the window moves.
+ */
+export const COMMA = {
+  head: { x: 1104, y: 215.998, w: 48, h: 47.835 },
+  band: { x: 1103.79, y: 263.833, w: 48.21, h: 24.167 },
+  /**
+   * Band-local shapes that are field, not tail: left of the curve and right of
+   * the slope. They overhang the band by 2 units where they meet its edges, so
+   * no edge pixel lets the picture through; the band's clip trims them.
+   */
+  covers:
+    "M-2 0H20.77L20.78 3.159C14.11 8.589 0 24.167 0 24.167V26.167H-2Z" +
+    "M48.21 0H50.21V26.167H23.93V24.167Z",
+} as const
+
+/** The band's height as a share of the head's width: how far the tail reaches. */
+export const TAIL = COMMA.band.h / COMMA.head.w
+const HEAD_RATIO = COMMA.head.h / COMMA.head.w
+
+/** The window's shape: the logo's comma, or its square, the comma's head alone. */
+export type Shape = "comma" | "square"
+
+/** A view of the illustration through the window: what it shows and how big. */
 export type Window = {
   /** The detail, in the image's pixels; the window centres on it. */
   focus: Point
-  /** How many image pixels the comma's head spans. */
+  /** How many image pixels the head spans. */
   span: number
   /** The head's size as a multiple of the layout's base size. */
   size: number
+  shape: Shape
 }
 
-/** How a panel shape places windows: shares of the panel's shorter side. */
+/** How a panel shape places windows, as shares of the panel's shorter side. */
 export type WindowLayout = {
-  /** The comma's head at `size` 1. */
+  /** The head at `size` 1. */
   base: number
-  /** The least space between the comma and the panel's edge. */
-  margin: number
   /** Where a cropped image sits vertically when the window is open: 0 top, 1 bottom. */
   anchorY: number
   /** The largest magnification, in panel pixels per image pixel. */
@@ -124,9 +149,9 @@ export type WindowLayout = {
 }
 
 /**
- * Where the image and the comma are: the image drawn at `scale` with its
- * top-left at (`x`, `y`), the comma's head a square of side `head` centred on
- * (`cx`, `cy`).
+ * Where the image and the window are: the image drawn at `scale` with its
+ * top-left at (`x`, `y`); the head `head` wide, centred on (`cx`, `cy`); the
+ * tail out by `tail`, 0 for the square and 1 for the comma.
  */
 export type Geometry = {
   x: number
@@ -135,6 +160,7 @@ export type Geometry = {
   cx: number
   cy: number
   head: number
+  tail: number
   focus: Point
 }
 
@@ -143,14 +169,17 @@ function coverScale(panel: Size, image: Size) {
   return Math.max(panel.w / image.w, panel.h / image.h)
 }
 
+const tailOf = (shape: Shape) => (shape === "comma" ? 1 : 0)
+
 /**
- * The whole picture, covering the panel, with the comma's head opened round
- * `focus` until it is larger than the panel: the start of a zoom on `focus`.
+ * The whole picture, covering the panel, with the head opened round `focus`
+ * until it is larger than the panel: the start of a zoom on `focus`.
  */
 export function openGeometry(
   panel: Size,
   image: Size,
   focus: Point,
+  shape: Shape,
   layout: WindowLayout,
 ): Geometry {
   const scale = coverScale(panel, image)
@@ -159,48 +188,60 @@ export function openGeometry(
   const cx = x + focus[0] * scale
   const cy = y + focus[1] * scale
   const reach = Math.max(cx, panel.w - cx, cy, panel.h - cy, 1)
-  return { x, y, scale, cx, cy, head: reach * 2.1, focus }
+  return { x, y, scale, cx, cy, head: reach * 2.1, tail: tailOf(shape), focus }
 }
 
 /**
- * The comma closed down on a detail: its head `size` × base, clamped so the
- * whole comma fits inside the margin, placed where the detail sits in the
- * open picture, and the picture magnified so the head spans `span` pixels.
+ * The window closed down on a detail: its head `size` × base, clamped so the
+ * whole shape stays `margin` pixels inside the panel, placed where the detail
+ * sits in the open picture, and the picture magnified so the head spans
+ * `span` pixels. Near the picture's edge the detail moves in, so the window
+ * never shows past it.
  */
 export function windowGeometry(
   panel: Size,
   image: Size,
   window: Window,
   layout: WindowLayout,
+  margin: number,
 ): Geometry {
+  const tail = tailOf(window.shape)
   const short = Math.min(panel.w, panel.h)
-  const margin = layout.margin * short
-  // The comma is 1.5 heads tall, its head's centre half a head from its top.
   const head = Math.min(
     window.size * layout.base * short,
-    (panel.h - 2 * margin) / 1.5,
+    (panel.h - 2 * margin) / (HEAD_RATIO + tail * TAIL),
     panel.w - 2 * margin,
   )
+  const above = (head * HEAD_RATIO) / 2
+  const below = above + tail * TAIL * head
   const scale = Math.min(head / window.span, layout.maxScale)
-  const open = openGeometry(panel, image, window.focus, layout)
+  // The shape must see only picture: move the detail in from the edges by
+  // whatever the window would show past them.
+  const halfWidth = head / 2 / scale
+  const focus: Point = [
+    clamp(window.focus[0], halfWidth, image.w - halfWidth),
+    clamp(window.focus[1], above / scale, image.h - below / scale),
+  ]
+  const open = openGeometry(panel, image, focus, window.shape, layout)
   const cx = clamp(open.cx, margin + head / 2, panel.w - margin - head / 2)
-  const cy = clamp(open.cy, margin + head / 2, panel.h - margin - head)
+  const cy = clamp(open.cy, margin + above, panel.h - margin - below)
   return {
-    x: cx - window.focus[0] * scale,
-    y: cy - window.focus[1] * scale,
+    x: cx - focus[0] * scale,
+    y: cy - focus[1] * scale,
     scale,
     cx,
     cy,
     head,
-    focus: window.focus,
+    tail,
+    focus,
   }
 }
 
 /**
  * Between two geometries: the detail and the window's centre glide; the head
- * and the zoom change on a log scale. Both ends put the detail at the head's
- * centre, so the picture is placed from the interpolated detail and the window
- * keeps it centred all the way.
+ * and the zoom change on a log scale; the tail grows or slides back under the
+ * head. Both ends put the detail at the head's centre, so the picture is
+ * placed from the interpolated detail and the window keeps it centred.
  */
 export function mixGeometry(a: Geometry, b: Geometry, t: number): Geometry {
   const focus: Point = [
@@ -217,81 +258,31 @@ export function mixGeometry(a: Geometry, b: Geometry, t: number): Geometry {
     cx,
     cy,
     head: lerpLog(a.head, b.head, t),
+    tail: lerp(a.tail, b.tail, t),
     focus,
   }
 }
 
-/** Whether the comma's head covers the whole panel, so no clip is needed. */
-export function coversPanel(geometry: Geometry, panel: Size) {
-  const half = geometry.head / 2
-  return (
-    geometry.cx - half <= 0 &&
-    geometry.cx + half >= panel.w &&
-    geometry.cy - half <= 0 &&
-    geometry.cy + half >= panel.h
-  )
-}
-
-/** The comma path's numbers and commands, parsed once. Absolute M L H V C Z only. */
-type Segment = { command: string; numbers: number[] }
-
-export function parsePath(d: string): Segment[] {
-  const segments: Segment[] = []
-  for (const match of d.matchAll(/([MLHVCZ])([^MLHVCZ]*)/g)) {
-    const numbers = (match[2]!.match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(
-      Number,
-    )
-    segments.push({ command: match[1]!, numbers })
-  }
-  return segments
-}
-
 /**
- * A path drawn with its head's centre at (`cx`, `cy`) and its head `size` wide,
- * from a source whose head is a square of side `unit` centred on `origin`.
- * Translation and uniform scale keep lines lines and curves curves, so the
- * comma stays exact at any size. Returned as absolute M L C Z commands.
+ * The two clipping boxes for a geometry, in panel pixels, each `unit` pixels
+ * per comma unit: the head, and the band under it, raised by `overlap` units
+ * so the two never show a seam, and slid up under the head as the tail
+ * retracts.
  */
-export function placePath(
-  segments: readonly Segment[],
-  origin: Point,
-  unit: number,
-  cx: number,
-  cy: number,
-  size: number,
-): string {
-  const k = size / unit
-  const X = (x: number) => round(cx + (x - origin[0]) * k)
-  const Y = (y: number) => round(cy + (y - origin[1]) * k)
-  let px = 0
-  let py = 0
-  const out: string[] = []
-  for (const { command, numbers } of segments) {
-    if (command === "M" || command === "L") {
-      ;[px, py] = [numbers[0]!, numbers[1]!]
-      out.push(`${command}${X(px)} ${Y(py)}`)
-    } else if (command === "H") {
-      px = numbers[0]!
-      out.push(`L${X(px)} ${Y(py)}`)
-    } else if (command === "V") {
-      py = numbers[0]!
-      out.push(`L${X(px)} ${Y(py)}`)
-    } else if (command === "C") {
-      const [x1, y1, x2, y2, x, y] = numbers as [
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-      ]
-      ;[px, py] = [x, y]
-      out.push(`C${X(x1)} ${Y(y1)} ${X(x2)} ${Y(y2)} ${X(x)} ${Y(y)}`)
-    } else if (command === "Z") {
-      out.push("Z")
-    }
+export function windowBoxes(geometry: Geometry, overlap: number) {
+  const unit = geometry.head / COMMA.head.w
+  const centreX = COMMA.head.x + COMMA.head.w / 2
+  const centreY = COMMA.head.y + COMMA.head.h / 2
+  const head = {
+    x: geometry.cx - (COMMA.head.w / 2) * unit,
+    y: geometry.cy - (COMMA.head.h / 2) * unit,
   }
-  return out.join("")
+  const band = {
+    x: geometry.cx + (COMMA.band.x - centreX) * unit,
+    y:
+      geometry.cy +
+      (COMMA.band.y - overlap - centreY) * unit -
+      (1 - geometry.tail) * COMMA.band.h * unit,
+  }
+  return { unit, head, band }
 }
-
-const round = (value: number) => Math.round(value * 100) / 100

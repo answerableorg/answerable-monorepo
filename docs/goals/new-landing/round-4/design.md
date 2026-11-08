@@ -25,12 +25,14 @@ The page is a **stage**: one screen, sticky, that never scrolls itself. Under it
 
 - **Copy**: each scene's lines enter from 24 px below and leave 24 px up, fading over the middle of the transition, each line 5 % behind the one before. Nothing moves while a scene is at rest.
 - **The values** are one block for scenes 2 to 7. Its title and index stay; only the statement rolls, and the highlight square slides along the index from number to number, its colour blending.
-- **The window**: the comma's head is a square. Open, it is larger than the panel; at a value, it is a quarter to a third of the panel's width, centred where the detail sits in the full picture, clamped inside the panel. The picture magnifies around the detail while the field closes in, so the camera zooms in place. Between two values the detail point, the window and the zoom interpolate together (size and zoom on a log scale), so the window glides and the picture pans under it.
-- **Field colour** blends in OKLab between scenes.
-- **Compositor first**: the picture moves by `transform` only; the window is a `clip-path: path()` recomputed per frame at the panel's size.
+- **The window** is the logo's square or its comma. Open, the head is larger than the panel; at a value, it is a quarter to a third of the panel's width, centred where the detail sits in the full picture, clamped to the panel's inset. The picture magnifies around the detail while the field closes in, so the camera zooms in place. Between two values the detail point, the window and the zoom interpolate together (size and zoom on a log scale), and the tail grows out of the square or slides back under it.
+- **Field colour** fades one solid layer over another.
+- **Compositor only**: the window is two rectangle clips moved by `transform`, the head and the band under it, the tail carved by two static field-coloured shapes; each holds the same picture, moved by `transform`. Nothing is masked or repainted per frame. A window's view stays inside the picture.
 - **Reduced motion**: no lag, no zoom or pan: each scene's end state, crossfaded over the same scroll.
 
 ## 3. Layout
+
+**The grid.** One page margin `M` (32 px, 48 from 1280 wide, 64 from 1920, 24 on short windows). The logo's capitals and the badge sit on the top line, `M` down; the rail's squares on the bottom line, `M` up. Inside the picture the inset is `M` less the frame, so the badge, the windows' clamp and the portraits land on the same lines. Header and rail rows are equal, so each scene is centred on the window's middle, its box trimmed to its ink (`text-box: trim cap alphabetic`). Phones: one gutter, 24 px, or the copy column's edge on a tablet, for the logo, copy, badge and windows; the copy starts 24 px under the band.
 
 - **`cols`** (64rem wide, or 40rem wide and landscape): copy column on the left (header, scene centred, progress squares at the foot), the framed image panel on the right, as now. Phones held sideways get this shape too.
 - **`band`** (the rest): header, the panel as a band, the scene under it. The band takes what the copy leaves, `clamp(10rem, 100svh - 26rem, 46svh)`, and folds away while the form's second step is open. Closing lines drop on short screens; the rail shows only in `cols`. Every scene fits in a 375×667 window.

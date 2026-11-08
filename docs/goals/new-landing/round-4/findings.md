@@ -68,3 +68,45 @@ No sideways scroll at any size. The form's second step folds the band on phones:
 **Gates:** typecheck 0, lint 0, web tests 145 pass (18 new in `lib/stage-math.test.ts`), `next build` 0 with `/new` static and one `h1`, knip reports nothing in `apps/web`.
 
 **Not covered:** gestures and the keyboard in real iOS Safari; WebKit's snap feel on a Mac trackpad; the live Google Sheet.
+
+## Performance, alignment and square windows (owner, later on 8 November)
+
+The owner: "it can be a bit slow even on a nice computer", "Think deeply on actual vertical / horizontal alignements", "for the zoom part, we could use also a square not only the comma".
+
+**Where the time went (production build, M1 Pro, Chromium on Metal, nine real scroll gestures, traced).** The main thread was light, p99 task 3.4 ms. The hitch was on the GPU thread: `FinishPaintRenderPass` and GPU tasks of 52 to 195 ms during the first transitions, a 333 ms frame. Cause: the comma was a `clip-path: path()` recomputed each frame over the picture, so the browser re-rendered a mask the size of the panel, or larger while the comma opened past it. The splash measured clean (no frame over 20 ms) and stays as it was.
+
+**What changed.**
+
+- The window is two rectangle clips moved by `transform`: the head, and under it the band that holds the tail, whose curve two static shapes in the field's colour carve out. Each clip holds the same picture, moved by `transform` (one 87 KB AVIF, one decode). No mask, no per-frame paint.
+- The field fades one solid layer over another instead of repainting a `color-mix` background.
+- The engine writes a style only when it changes, skips scenes that stay off screen, and reads no layout while drawing (sizes measured on resize). Lines, statements and the index get their own layers.
+- The drawn progress lags the scroll by 45 ms, not 70.
+
+| Chromium, CPU slowed 4×                    | Before          | After   |
+| ------------------------------------------ | --------------- | ------- |
+| Script                                     | 1,154 ms        | 276 ms  |
+| Style recalculation                        | 352 ms          | 130 ms  |
+| Paint                                      | 194 ms          | 86 ms   |
+| Pre-paint and layerize                     | 367 ms          | 162 ms  |
+| Longest main-thread task                   | 12.9 ms         | 6.5 ms  |
+| GPU or compositor tasks over 30 ms (at 1×) | 5, up to 195 ms | 0       |
+| Worst frame (at 1×)                        | 333 ms          | 16.8 ms |
+
+| WebKit 26.6 (Playwright), smooth scroll scene to scene | Before        | After        |
+| ------------------------------------------------------ | ------------- | ------------ |
+| Desktop: frames over 20 ms, p99, worst                 | 5, 20, 25 ms  | 0, 19, 19 ms |
+| Phone: frames over 20 ms, p99, worst                   | 22, 22, 25 ms | 0, 19, 20 ms |
+
+**Square or comma.** The comma's head is the logo's square, so a square window is the comma with its tail slid up under the head: the two turn into each other as the reader scrolls. Values 1, 2, 4 and 5 are squares; 3 (honest: the speech mark) and 6 are commas, and so is the programme's black window. Keir's portrait is a square, Sadie's a comma. A window's view is kept inside the picture: the black comma's tail ran past the illustration's bottom, and the laptop window past its right edge on large screens.
+
+**The grid, measured** (logo's capitals top, badge top, rail squares' bottom, each scene's middle):
+
+| Window    | M   | Logo top | Badge top | Rail bottom | Scene middles |
+| --------- | --- | -------- | --------- | ----------- | ------------- |
+| 1024×600  | 32  | 32       | 32        | 568         | 300 ×5        |
+| 1280×720  | 48  | 48       | 48        | 672         | 360 ×5        |
+| 1440×900  | 48  | 48       | 48        | 852         | 450 ×5        |
+| 1920×1080 | 64  | 64       | 64        | 1016        | 540 ×5        |
+| 2560×1440 | 64  | 64       | 64        | 1376        | 720 ×5        |
+
+Phones and tablets: the logo, the copy, the badge and the windows share one edge, 24 px on phones and the copy column's edge on a tablet (97 px at 768×1024). A phone on its side: logo and badge both on y 24. Every scene fits at all eleven sizes, from 375×667 to 2560×1440.

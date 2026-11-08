@@ -35,6 +35,7 @@ Worktree `.claude/worktrees/new-landing-r4`, branch `claude/new-landing-r4`, fro
 | 7   | Accessibility: no-JS, reduced motion, keyboard, screen reader order, one `h1`     | complete                                                      |
 | 8   | Verify: browser at 375×667 to 2560×1440, phone landscape, tablet; gates           | complete                                                      |
 | 9   | Show the owner; land on main after approval; check Vercel; remove the worktree    | in progress                                                   |
+| 10  | Owner: performance, alignment, square windows: measure, rebuild the window, grid  | complete                                                      |
 
 ## Open with the owner
 
@@ -54,3 +55,8 @@ Worktree `.claude/worktrees/new-landing-r4`, branch `claude/new-landing-r4`, fro
 | Rail squares did nothing                                                 | An edit lost the `goToRef` assignment                                            | Rail squares use the same `data-go` delegation as the links                                             |
 | Synthetic 120 px wheel did not move                                      | Mandatory snapping returns a short precise scroll to the current scene           | Expected, as a slow short trackpad drag; tests use keys and long gestures                               |
 | Simulator panel refused                                                  | The owner has not granted access to the simulator                                | Rendered with `simctl openurl` and `simctl io screenshot`; gestures wait on the grant                   |
+| GPU stalls up to 195 ms on the first transitions                         | A per-frame `clip-path: path()` re-rendered a panel-sized mask                   | Two rectangle clips moved by `transform`, the tail carved by static shapes                              |
+| The black comma's tail showed the field                                  | Its view ran past the illustration's bottom edge                                 | `windowGeometry` moves the detail in so a window never shows past the picture                           |
+| Faint lines along the tail band                                          | The band's clip edge and the carving shapes' edge anti-aliased together          | The carving shapes overhang the band by 2 units; the clip trims both                                    |
+| Portraits filled a phone's half                                          | Sized by height alone                                                            | Sized by the half's smaller side (`container-type: size`)                                               |
+| Lint: `react-hooks/immutability` on the panel's parts                    | A `useState` object mutated by callback refs                                     | The parts live in a ref; drawing moved to module functions                                              |

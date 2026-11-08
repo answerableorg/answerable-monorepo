@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test"
 
 import {
-  coversPanel,
+  COMMA,
   lineFrame,
   mixGeometry,
   offsetFrom,
   openGeometry,
-  parsePath,
-  placePath,
   progressAt,
   rollFrame,
+  TAIL,
+  windowBoxes,
   windowGeometry,
   type WindowLayout,
 } from "./stage-math"
@@ -19,12 +19,7 @@ const TOPS = [0, 900, 1800, 2700]
 const IMAGE = { w: 1086, h: 1448 }
 const COLUMN = { w: 713, h: 870 }
 const BAND = { w: 390, h: 250 }
-const LAYOUT: WindowLayout = {
-  base: 0.36,
-  margin: 0.09,
-  anchorY: 0.5,
-  maxScale: 1.3,
-}
+const LAYOUT: WindowLayout = { base: 0.36, anchorY: 0.5, maxScale: 1.3 }
 
 describe("unit: stage progress", () => {
   test("reads the scroll as a position among snap points", () => {
@@ -95,57 +90,112 @@ describe("unit: line and roll frames", () => {
   })
 })
 
-describe("unit: the comma window", () => {
+describe("unit: the window", () => {
+  const MARGIN = 32
+  const square = {
+    focus: [866, 998] as const,
+    span: 250,
+    size: 1,
+    shape: "square" as const,
+  }
+  const comma = { ...square, shape: "comma" as const }
+
   test("open, the picture covers the panel as object-fit: cover does", () => {
-    const open = openGeometry(COLUMN, IMAGE, [543, 724], LAYOUT)
+    const open = openGeometry(COLUMN, IMAGE, [543, 724], "comma", LAYOUT)
     const scale = 713 / 1086
     expect(open.scale).toBeCloseTo(scale)
     expect(open.x).toBeCloseTo(0)
     expect(open.y).toBeCloseTo((870 - 1448 * scale) / 2)
-    expect(coversPanel(open, COLUMN)).toBe(true)
+    // The head is larger than the panel all round.
+    expect(open.cx - open.head / 2).toBeLessThan(0)
+    expect(open.cx + open.head / 2).toBeGreaterThan(713)
+    expect(open.cy - open.head / 2).toBeLessThan(0)
+    expect(open.cy + open.head / 2).toBeGreaterThan(870)
   })
 
-  test("closed, the whole comma stays inside the margin", () => {
+  test("a comma stays inside the margin, tail included", () => {
     // The signature, at the bottom right of the picture.
-    const g = windowGeometry(
+    const g = windowGeometry(COLUMN, IMAGE, comma, LAYOUT, MARGIN)
+    expect(g.tail).toBe(1)
+    expect(g.cx + g.head / 2).toBeCloseTo(713 - MARGIN)
+    const bottom =
+      g.cy + (g.head * COMMA.head.h) / COMMA.head.w / 2 + TAIL * g.head
+    expect(bottom).toBeCloseTo(870 - MARGIN)
+  })
+
+  test("a square has no tail, so it comes further down", () => {
+    // A detail at the very bottom of the picture: both shapes are pulled up.
+    const low = { ...square, focus: [866, 1420] as const }
+    const s = windowGeometry(COLUMN, IMAGE, low, LAYOUT, MARGIN)
+    const c = windowGeometry(
       COLUMN,
       IMAGE,
-      { focus: [866, 998], span: 250, size: 1 },
+      { ...low, shape: "comma" },
       LAYOUT,
+      MARGIN,
     )
-    const margin = 0.09 * 713
-    expect(g.cx - g.head / 2).toBeGreaterThanOrEqual(margin - 0.01)
-    expect(g.cx + g.head / 2).toBeLessThanOrEqual(713 - margin + 0.01)
-    // The comma is a head and half a head of tail below it.
-    expect(g.cy + g.head).toBeLessThanOrEqual(870 - margin + 0.01)
-    expect(coversPanel(g, COLUMN)).toBe(false)
+    expect(s.tail).toBe(0)
+    const half = (s.head * COMMA.head.h) / COMMA.head.w / 2
+    expect(s.cy + half).toBeCloseTo(870 - MARGIN)
+    expect(c.cy).toBeLessThan(s.cy)
   })
 
   test("closed, the detail sits at the head's centre", () => {
     const g = windowGeometry(
       BAND,
       IMAGE,
-      { focus: [262, 1166], span: 230, size: 0.9 },
-      { ...LAYOUT, base: 0.5, margin: 0.07, anchorY: 0.36 },
+      { focus: [262, 1166], span: 230, size: 0.9, shape: "square" },
+      { ...LAYOUT, base: 0.5, anchorY: 0.36 },
+      24,
     )
     expect(g.x + 262 * g.scale).toBeCloseTo(g.cx)
     expect(g.y + 1166 * g.scale).toBeCloseTo(g.cy)
+  })
+
+  test("never shows past the picture's edges", () => {
+    // The model, low in the picture, with a long tail under it.
+    const g = windowGeometry(
+      COLUMN,
+      IMAGE,
+      { focus: [556, 786], span: 760, size: 1.75, shape: "comma" },
+      LAYOUT,
+      MARGIN,
+    )
+    const below = (g.head * COMMA.head.h) / COMMA.head.w / 2 + TAIL * g.head
+    expect(g.focus[1] + below / g.scale).toBeLessThanOrEqual(1448 + 1e-6)
+    // The laptop, near the right edge, magnified to the limit.
+    const wide = windowGeometry(
+      { w: 1273, h: 1410 },
+      IMAGE,
+      { focus: [898, 482], span: 380, size: 1.15, shape: "comma" },
+      LAYOUT,
+      MARGIN,
+    )
+    expect(wide.focus[0] + wide.head / 2 / wide.scale).toBeLessThanOrEqual(
+      1086 + 1e-6,
+    )
   })
 
   test("never magnifies past the layout's limit", () => {
     const g = windowGeometry(
       { w: 1273, h: 1410 },
       IMAGE,
-      { focus: [296, 800], span: 100, size: 1 },
+      { ...square, span: 100 },
       LAYOUT,
+      MARGIN,
     )
     expect(g.scale).toBe(1.3)
   })
 
   test("a transition starts and ends exactly on its states", () => {
-    const window = { focus: [478, 600] as const, span: 300, size: 1.1 }
-    const open = openGeometry(COLUMN, IMAGE, window.focus, LAYOUT)
-    const closed = windowGeometry(COLUMN, IMAGE, window, LAYOUT)
+    const window = {
+      focus: [478, 600] as const,
+      span: 300,
+      size: 1.1,
+      shape: "comma" as const,
+    }
+    const open = openGeometry(COLUMN, IMAGE, window.focus, "comma", LAYOUT)
+    const closed = windowGeometry(COLUMN, IMAGE, window, LAYOUT, MARGIN)
     expect(mixGeometry(open, closed, 0)).toEqual(open)
     const end = mixGeometry(open, closed, 1)
     expect(end.x).toBeCloseTo(closed.x)
@@ -156,27 +206,77 @@ describe("unit: the comma window", () => {
       Math.sqrt(open.head * closed.head),
     )
   })
+
+  test("the tail grows from the square to the comma", () => {
+    const a = windowGeometry(COLUMN, IMAGE, square, LAYOUT, MARGIN)
+    const b = windowGeometry(COLUMN, IMAGE, comma, LAYOUT, MARGIN)
+    expect(mixGeometry(a, b, 0.25).tail).toBeCloseTo(0.25)
+  })
 })
 
-describe("unit: the comma path", () => {
-  const comma = parsePath(COMMA_PATH)
+describe("unit: the window's boxes", () => {
+  const g = {
+    x: 0,
+    y: 0,
+    scale: 1,
+    cx: 400,
+    cy: 300,
+    head: 240,
+    tail: 1,
+    focus: [0, 0] as const,
+  }
 
-  test("parses every command of the logo's comma", () => {
-    expect(comma.map((segment) => segment.command).join("")).toBe("MVLHCLHLHZ")
+  test("the head is centred on the window", () => {
+    const { unit, head } = windowBoxes(g, 0)
+    expect(unit).toBe(5)
+    expect(head.x).toBeCloseTo(280)
+    expect(head.y).toBeCloseTo(300 - (47.835 / 2) * 5)
   })
 
-  test("at its own size and place it is the logo's comma", () => {
-    const d = placePath(comma, [1128, 240], 48, 1128, 240, 48)
-    expect(d).toBe(
-      "M1152 216L1152 263.83L1127.72 288L1103.79 288C1103.79 288 1117.9 272.42 1124.57 266.99L1124.56 263.83L1104 263.83L1104.01 216L1152 216Z",
+  test("the band starts under the head, raised by the overlap", () => {
+    const { band, head } = windowBoxes(g, 1)
+    expect(band.y).toBeCloseTo(head.y + (47.835 - 1) * 5)
+    // The tail's tip sits 0.21 units left of the head.
+    expect(band.x).toBeCloseTo(head.x - 0.21 * 5)
+  })
+
+  test("a square slides the band up under the head", () => {
+    const comma = windowBoxes(g, 1).band
+    const square = windowBoxes({ ...g, tail: 0 }, 1).band
+    expect(comma.y - square.y).toBeCloseTo(24.167 * 5)
+  })
+})
+
+describe("unit: the comma's parts match the logo", () => {
+  const numbers = COMMA_PATH.match(/-?\d*\.?\d+/g)!.map(Number)
+
+  test("the head and the band come from the logo's comma", () => {
+    // M1152 215.998 V263.833 L1127.72 288 H1103.79 C… H1104 L1104.01 215.998
+    expect(numbers.slice(0, 3)).toEqual([1152, 215.998, 263.833])
+    expect(COMMA.head.x + COMMA.head.w).toBe(1152)
+    expect(COMMA.head.y).toBe(215.998)
+    expect(COMMA.head.y + COMMA.head.h).toBeCloseTo(263.833)
+    expect(COMMA.band.y).toBe(263.833)
+    expect(COMMA.band.y + COMMA.band.h).toBe(288)
+    expect(COMMA.band.x).toBe(1103.79)
+  })
+
+  test("the covers trace the tail's edges", () => {
+    // M1152 215.998 V263.833 L1127.72 288 H1103.79
+    // C1103.79 288 1117.9 272.422 1124.57 266.992 L1124.56 263.833 …
+    const [, , , footX, , tipX, c1x, c1y, c2x, c2y, endX, endY, topX, topY] =
+      numbers as number[]
+    const n = (value: number) => String(+value.toFixed(3))
+    const x = (value: number) => n(value - COMMA.band.x)
+    const y = (value: number) => n(value - COMMA.band.y)
+    expect(tipX).toBe(COMMA.band.x)
+    // The tail's edges, exactly; the rest overhangs the band.
+    expect(COMMA.covers).toContain(
+      `H${x(topX!)}L${x(endX!)} ${y(endY!)}` +
+        `C${x(c2x!)} ${y(c2y!)} ${x(c1x!)} ${y(c1y!)} 0 ${y(288)}`,
     )
-  })
-
-  test("moves and scales round the head's centre", () => {
-    const d = placePath(comma, [1128, 240], 48, 100, 100, 96)
-    // The head's top-right corner: 24 units right and up, doubled.
-    expect(d.startsWith("M148 52")).toBe(true)
-    // The tail's tip: 24.21 units left and 48 down, doubled.
-    expect(d).toContain("L51.58 196")
+    expect(COMMA.covers).toContain(`M${n(COMMA.band.w)} 0`)
+    expect(COMMA.covers).toContain(`H${x(footX!)}V${y(288)}Z`)
+    expect(y(topY!)).toBe("0")
   })
 })

@@ -206,6 +206,20 @@ html[data-stage]:not([data-engine]) [data-scene]:not([data-from="0"]) {
 html[data-engine] [data-scene]:not([data-current]) {
   pointer-events: none;
 }
+/* The lines the scroll moves get their own layers, so moving them repaints
+   nothing. */
+html[data-stage] :is([data-line], [data-step], [data-highlight], [data-mark]) {
+  will-change: transform, opacity;
+}
+/* A scene's box is its ink: trimmed to the first line's capitals and the last
+   line's baseline, so centring it centres the words, and the gap under the
+   band is the gutter to the capitals. */
+html[data-stage] [data-scene] > :first-child {
+  text-box: trim-start cap alphabetic;
+}
+html[data-stage] [data-scene] > :last-child {
+  text-box: trim-end cap alphabetic;
+}
 /* Under a band, the form's second step needs the screen: the band folds. */
 @variant band {
   html[data-stage] [data-stage-grid]:has([data-current][data-form-step="2"]) {

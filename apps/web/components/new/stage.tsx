@@ -24,8 +24,11 @@ import { cn } from "@answerable/ui/lib/utils"
 const SNAPS = SCENE_COUNT + 1
 /** How far a line travels as it enters or leaves, in pixels. */
 const LINE_TRAVEL = 24
-/** The drawn progress follows the scroll with this time constant, in seconds. */
-const LAG = 0.07
+/**
+ * The drawn progress follows the scroll with this time constant, in seconds:
+ * enough to smooth a wheel's steps, short enough to feel attached.
+ */
+const LAG = 0.045
 /** Navigation further than this many scenes cuts through a fade. */
 const SMOOTH_REACH = 2
 
@@ -38,6 +41,11 @@ type SceneParts = {
   marks: HTMLElement[]
   highlight: HTMLElement | null
   current: boolean
+  /** Off screen at the last frame, its lines already written out. */
+  hidden: boolean
+  /** The statements' box height and the index numbers' places, measured once. */
+  travel: number
+  markX: number[]
 }
 
 const FIELD_SELECTOR = "input, select, textarea, [role='combobox']"
@@ -95,7 +103,21 @@ export function Stage({
       marks: [...element.querySelectorAll<HTMLElement>("[data-mark]")],
       highlight: element.querySelector<HTMLElement>("[data-highlight]"),
       current: false,
+      hidden: false,
+      travel: 0,
+      markX: [],
     }))
+
+    // A style is only set when it changes, and nothing is read from layout
+    // while a frame is drawn: sizes are measured on resize.
+    let written = new WeakMap<Element, Record<string, string>>()
+    const write = (element: HTMLElement, key: string, value: string) => {
+      let values = written.get(element)
+      if (!values) written.set(element, (values = {}))
+      if (values[key] === value) return
+      values[key] = value
+      element.style.setProperty(key, value)
+    }
 
     let tops: number[] = []
     let target = 0
@@ -110,6 +132,12 @@ export function Stage({
       tops = markers.map(
         (marker) => marker.getBoundingClientRect().top + window.scrollY,
       )
+      for (const scene of scenes) {
+        scene.travel = scene.steps[0]?.parentElement?.clientHeight ?? 0
+        scene.markX = scene.marks.map((mark) => mark.offsetLeft)
+        scene.hidden = false
+      }
+      written = new WeakMap()
     }
     const read = () => progressAt(window.scrollY, tops)
 
@@ -122,16 +150,24 @@ export function Stage({
           scene.current = current
           scene.element.toggleAttribute("data-current", current)
         }
+        // A scene that stays off screen costs nothing.
+        const hidden = Math.abs(offset) >= 1
+        if (hidden && scene.hidden) continue
+        scene.hidden = hidden
         scene.lines.forEach((line, index) => {
           const { opacity, shift } = lineFrame(
             offset,
             index,
             scene.lines.length,
           )
-          line.style.opacity = String(opacity)
-          line.style.transform = reduced
-            ? ""
-            : `translate3d(0, ${shift * LINE_TRAVEL}px, 0)`
+          write(line, "opacity", opacity.toFixed(3))
+          write(
+            line,
+            "transform",
+            reduced
+              ? "none"
+              : `translate3d(0, ${(shift * LINE_TRAVEL).toFixed(2)}px, 0)`,
+          )
         })
         if (scene.steps.length) applySteps(scene, progress, reduced)
       }
@@ -142,8 +178,8 @@ export function Stage({
         railItems.forEach((item, index) =>
           item.toggleAttribute("data-active", index === nearest),
         )
+        registerRef.current?.toggleAttribute("data-hidden", nearest === 0)
       }
-      registerRef.current?.toggleAttribute("data-hidden", nearest === 0)
       panelRef.current?.render(progress, reduced)
     }
 
@@ -155,8 +191,6 @@ export function Stage({
     ) => {
       const count = scene.steps.length
       const position = clamp(progress - scene.from, 0, count - 1)
-      // The statements roll through their list's box, which clips them.
-      const travel = scene.steps[0]?.parentElement?.clientHeight ?? 0
       scene.steps.forEach((step, index) => {
         let offset = clamp(position - index, -1, 1)
         // Arriving and leaving belong to the whole block.
@@ -165,10 +199,14 @@ export function Stage({
         const { opacity, shift } = reduced
           ? lineFrame(offset, 0, 1)
           : rollFrame(offset)
-        step.style.opacity = String(opacity)
-        step.style.transform = reduced
-          ? ""
-          : `translate3d(0, ${shift * travel}px, 0)`
+        write(step, "opacity", opacity.toFixed(3))
+        write(
+          step,
+          "transform",
+          reduced
+            ? "none"
+            : `translate3d(0, ${(shift * scene.travel).toFixed(2)}px, 0)`,
+        )
         step.toggleAttribute("aria-current", Math.abs(offset) < 0.5)
       })
       const index = Math.floor(position)
@@ -178,22 +216,29 @@ export function Stage({
       const next = Math.min(index + 1, count - 1)
       scene.marks.forEach((mark, k) => {
         const distance = Math.abs(index + eased - k)
-        mark.style.opacity = String(0.32 + 0.68 * (1 - Math.min(distance, 1)))
+        write(
+          mark,
+          "opacity",
+          (0.32 + 0.68 * (1 - Math.min(distance, 1))).toFixed(3),
+        )
       })
       const highlight = scene.highlight
-      const from = scene.marks[index]
-      const to = scene.marks[next]
-      if (highlight && from && to) {
-        const x = from.offsetLeft + (to.offsetLeft - from.offsetLeft) * eased
-        highlight.style.transform = `translate3d(${x}px, 0, 0)`
-        const a = from.dataset.colour
-        const b = to.dataset.colour
-        highlight.style.backgroundColor =
+      const fromX = scene.markX[index]
+      const toX = scene.markX[next]
+      if (highlight && fromX !== undefined && toX !== undefined) {
+        const x = fromX + (toX - fromX) * eased
+        write(highlight, "transform", `translate3d(${x.toFixed(2)}px, 0, 0)`)
+        const a = scene.marks[index]?.dataset.colour ?? ""
+        const b = scene.marks[next]?.dataset.colour ?? ""
+        write(
+          highlight,
+          "background-color",
           a === b || eased <= 0
-            ? (a ?? "")
+            ? a
             : eased >= 1
-              ? (b ?? "")
-              : `color-mix(in oklab, ${a} ${((1 - eased) * 100).toFixed(1)}%, ${b})`
+              ? b
+              : `color-mix(in oklab, ${a} ${((1 - eased) * 100).toFixed(1)}%, ${b})`,
+        )
       }
     }
 
@@ -390,7 +435,7 @@ export function Stage({
       ref={registerRef}
       href="#join"
       data-go="0"
-      className="text-sm font-bold decoration-2 underline-offset-4 transition-[opacity,visibility] duration-200 hover:underline data-[hidden]:invisible data-[hidden]:opacity-0 motion-reduce:transition-none"
+      className="text-sm font-bold decoration-2 underline-offset-4 transition-[opacity,visibility] duration-200 [text-box:trim-both_cap_alphabetic] hover:underline data-[hidden]:invisible data-[hidden]:opacity-0 motion-reduce:transition-none"
     >
       Register your interest
     </a>
@@ -398,20 +443,35 @@ export function Stage({
 
   return (
     <div className="stage:relative">
+      {/*
+        The grid the page aligns to.
+        - Columns (`cols`): one margin, `--m`, from every edge of the window.
+          The logo's capitals and the badge's top sit on the top line, `--m`
+          down; the progress squares sit on the bottom line, `--m` up. Inside
+          the picture, `--inset` is the margin less the frame, so anything at
+          the inset lands on those lines: the badge, the windows' edges, the
+          portraits. The header and the rail rows are the same height,
+          `--edge`, so the copy is centred on the window's middle, which is
+          the picture's.
+        - Band (`band`): one gutter, 1.5rem, or the copy column's edge where
+          the window is wider than the column. The logo, the copy, the badge
+          and the windows keep it from the sides, and the copy starts 1.5rem
+          below the band.
+        - Short windows, a phone on its side: the rail goes and the header
+          row tightens, so the copy keeps its room, a little above the middle. The band gives way to the copy: about 26rem stays for the
+          header and the tallest scene, never less than 10rem of picture. It
+          folds away while the form's second step is open.
+      */}
       <div
         ref={stageRef}
         data-stage-grid
-        className="stage:sticky stage:top-0 stage:h-svh stage:min-h-0 stage:overflow-hidden stage:transition-[grid-template-rows] stage:duration-500 stage:ease-[cubic-bezier(0.2,0,0,1)] cols:grid-cols-2 cols:grid-rows-[auto_1fr] stage:band:grid-rows-[auto_var(--band)_minmax(0,1fr)] stage:cols:grid-rows-[auto_minmax(0,1fr)] grid min-h-svh grid-cols-1 grid-rows-[auto_auto_1fr] motion-reduce:transition-none"
-        // The band gives way to the copy: about 26rem stays for the header and
-        // the tallest scene, and the band never goes under 10rem. While the
-        // form's second step is open it folds away, so the fields have the
-        // screen.
+        className="stage:sticky stage:top-0 stage:h-svh stage:min-h-0 stage:overflow-hidden stage:transition-[grid-template-rows] stage:duration-500 stage:ease-[cubic-bezier(0.2,0,0,1)] cols:grid-cols-2 cols:grid-rows-[auto_1fr] cols:[--inset:calc(var(--m)-var(--frame,16px))] stage:band:grid-rows-[auto_var(--band)_minmax(0,1fr)] stage:cols:grid-rows-[var(--edge)_minmax(0,1fr)_var(--edge)] [@media(height<30rem)]:stage:cols:grid-rows-[calc(var(--m)+1rem)_minmax(0,1fr)_0.5rem] grid min-h-svh grid-cols-1 grid-rows-[auto_auto_1fr] [--edge:calc(var(--m)+2.5rem)] [--inset:max(1.5rem,calc((100%_-_560px)/2))] [--m:2rem] motion-reduce:transition-none min-[80rem]:[--m:3rem] min-[120rem]:[--m:4rem] [@media(height<35rem)]:[--m:1.5rem]"
         style={
           { "--band": "clamp(10rem, 100svh - 26rem, 46svh)" } as CSSProperties
         }
       >
         <div className="bg-background cols:col-start-1 cols:row-start-1 cols:px-12 sticky top-0 z-30 px-6">
-          <header className="cols:py-8 mx-auto flex w-full max-w-[560px] items-baseline justify-between py-4 min-[1800px]:max-w-[640px] [@media(height<35rem)]:py-3">
+          <header className="cols:pt-[var(--m)] cols:pb-6 mx-auto flex w-full max-w-[560px] items-end justify-between py-5 min-[1800px]:max-w-[640px]">
             {logo}
             {register}
           </header>
@@ -419,7 +479,7 @@ export function Stage({
 
         {/* The band under the header, or the right column framed as wide as
             the scrollbar's gutter (`FRAME_SCRIPT`). */}
-        <div className="cols:col-start-2 cols:row-span-2 cols:row-start-1 min-h-0">
+        <div className="cols:col-start-2 cols:row-span-3 cols:row-start-1 min-h-0">
           <div className="stage:h-full cols:sticky cols:top-0 cols:h-svh cols:py-[var(--frame,16px)] cols:pr-[calc(var(--frame,16px)-var(--gutter,0px))]">
             <div className="stage:aspect-auto stage:h-full cols:aspect-auto cols:h-full relative aspect-[4/3] overflow-hidden">
               <ZoomPanel ref={panelRef} />
@@ -427,16 +487,17 @@ export function Stage({
           </div>
         </div>
 
-        <div className="cols:col-start-1 cols:row-start-2 cols:px-12 flex min-h-0 flex-col px-6">
-          <div className="mx-auto flex min-h-0 w-full max-w-[560px] grow flex-col min-[1800px]:max-w-[640px]">
-            <div
-              ref={scenesRef}
-              className="stage:relative stage:grow stage:gap-0 stage:py-0 flex flex-col gap-16 py-8"
-            >
-              {children}
-            </div>
-            <Rail ref={railRef} />
+        <div className="cols:col-start-1 cols:row-start-2 cols:px-12 min-h-0 px-6">
+          <div
+            ref={scenesRef}
+            className="stage:relative stage:h-full stage:gap-0 stage:py-0 mx-auto flex w-full max-w-[560px] flex-col gap-16 py-8 min-[1800px]:max-w-[640px]"
+          >
+            {children}
           </div>
+        </div>
+
+        <div className="stage:cols:col-start-1 stage:cols:row-start-3 stage:cols:block hidden px-12 [@media(height<30rem)]:hidden!">
+          <Rail ref={railRef} />
         </div>
       </div>
 
@@ -465,10 +526,11 @@ export function Stage({
 /** Ten squares, the brand's marks: where the page is, and a way to each scene. */
 function Rail({ ref }: { ref: Ref<HTMLOListElement> }) {
   return (
+    // Its squares sit on the bottom line: each at the foot of its button.
     <ol
       ref={ref}
       aria-label="Scenes"
-      className="stage:cols:flex hidden shrink-0 items-center gap-1 pt-4 pb-6 [@media(height<30rem)]:hidden! [@media(height>=40rem)]:pb-8"
+      className="mx-auto flex h-full w-full max-w-[560px] items-end gap-1 pb-[var(--m)] min-[1800px]:max-w-[640px]"
     >
       {RAIL.map(({ label, colour }, index) => (
         <li key={label} className="flex">
@@ -477,10 +539,10 @@ function Rail({ ref }: { ref: Ref<HTMLOListElement> }) {
             data-rail
             aria-label={label}
             data-go={index}
-            className="group/rail grid size-6 place-items-center"
+            className="group/rail grid size-6 items-end justify-items-center"
             style={{ "--rail": colour } as CSSProperties}
           >
-            <span className="bg-muted-foreground/30 size-1.5 transition-[background-color,scale] duration-300 group-hover/rail:bg-[var(--rail)] group-data-[active]/rail:scale-[1.67] group-data-[active]/rail:bg-[var(--rail)] motion-reduce:transition-none" />
+            <span className="bg-muted-foreground/30 size-1.5 origin-bottom transition-[background-color,scale] duration-300 group-hover/rail:bg-[var(--rail)] group-data-[active]/rail:scale-[1.67] group-data-[active]/rail:bg-[var(--rail)] motion-reduce:transition-none" />
           </button>
         </li>
       ))}

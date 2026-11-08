@@ -4,11 +4,15 @@ import { COMMA_PATH, COMMA_VIEW_BOX } from "@answerable/ui/lib/logo"
  * The comma, then the word as live text, in the proportions of the brand
  * banners (measured at 4×): the comma is 1.26 cap heights tall, its top 0.09
  * cap above the capitals and its tail 0.17 cap below the baseline, with a 0.45
- * cap gap. `cap` units keep the ratio at any font size.
+ * cap gap. `cap` units keep the ratio at any font size. The box is trimmed to
+ * the capitals, so the header can put them on the page's top line.
  */
 export function Lockup() {
   return (
-    <a href="/new" className="text-[20px]/none font-bold whitespace-nowrap">
+    <a
+      href="/new"
+      className="text-[20px]/none font-bold whitespace-nowrap [text-box:trim-both_cap_alphabetic]"
+    >
       <svg
         aria-hidden="true"
         viewBox={COMMA_VIEW_BOX}

@@ -20,13 +20,12 @@ import {
 } from "@/components/new/scenes"
 import {
   clamp,
-  coversPanel,
+  COMMA,
   lerp,
   mixGeometry,
   openGeometry,
-  parsePath,
-  placePath,
   smootherstep,
+  windowBoxes,
   windowGeometry,
   type Point,
   type Size,
@@ -39,10 +38,19 @@ export type ZoomPanelHandle = {
   render: (progress: number, reduced: boolean) => void
 }
 
-const COMMA = parsePath(COMMA_PATH)
-/** The comma's head in the logo's coordinates: a 48-unit square round this point. */
-const COMMA_HEAD: Point = [1128, 239.92]
-const COMMA_UNIT = 48
+/** Pixels per comma unit inside the two clip boxes, before their scale. */
+const LOCAL = 5
+/** Comma units the band reaches up under the head, so the two never part. */
+const OVERLAP = 1
+const HEAD_BOX = {
+  width: COMMA.head.w * LOCAL,
+  height: COMMA.head.h * LOCAL,
+}
+const BAND_BOX = {
+  width: COMMA.band.w * LOCAL,
+  height: (COMMA.band.h + OVERLAP) * LOCAL,
+}
+const BAND_VIEW_BOX = `0 ${-OVERLAP} ${COMMA.band.w} ${COMMA.band.h + OVERLAP}`
 
 const COMMA_MASK: CSSProperties = {
   maskImage: `url("data:image/svg+xml,${encodeURIComponent(
@@ -60,43 +68,101 @@ const COLUMN_QUERY =
 const REST = 0.04
 
 /**
- * The image panel: the hero illustration, a colour field with a comma-shaped
- * window onto one detail of it, the Answerable AP badge, and the two
- * portraits. It draws nothing on its own; the stage calls `render` with the
- * scroll's progress. Before that it is the plain picture, as without JS.
+ * The image panel: the hero illustration seen through the logo's square or
+ * comma on a colour field, the Answerable AP badge, and the two portraits.
+ * The stage calls `render` with the scroll's progress; before that it is the
+ * plain picture, as without JS.
+ *
+ * Every frame is compositor work only. The window is two rectangle clips that
+ * move by `transform`: the head, and under it the band that holds the tail,
+ * whose curve two static shapes in the field's colour carve out. Each clip
+ * holds the same picture, moved by `transform` too, so the browser samples
+ * one decoded image and paints nothing. The field changes colour by fading
+ * one solid layer over another. A square is the comma with its tail slid up
+ * under the head, so the two shapes turn into each other.
  */
-export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const windowRef = useRef<HTMLDivElement>(null)
-  const imageRef = useRef<HTMLImageElement>(null)
-  const badgeRef = useRef<HTMLDivElement>(null)
-  const halvesRef = useRef<(HTMLDivElement | null)[]>([])
-  const state = useRef({
-    size: { w: 0, h: 0 } as Size,
+/** The panel's elements, set by their refs, and what it remembers between frames. */
+type Parts = {
+  root: HTMLDivElement | null
+  fields: (HTMLDivElement | null)[]
+  head: HTMLDivElement | null
+  headImage: HTMLImageElement | null
+  band: HTMLDivElement | null
+  bandImage: HTMLImageElement | null
+  covers: (SVGSVGElement | null)[]
+  badge: HTMLDivElement | null
+  halves: (HTMLDivElement | null)[]
+  size: Size
+  column: boolean
+  margin: number
+  badgeAt: Point
+  last: null | [number, boolean]
+  segment: number
+  written: WeakMap<Element, Record<string, string>>
+}
+
+function createParts(): Parts {
+  return {
+    root: null,
+    fields: [],
+    head: null,
+    headImage: null,
+    band: null,
+    bandImage: null,
+    covers: [],
+    badge: null,
+    halves: [],
+    size: { w: 0, h: 0 },
     column: true,
-    badge: [0, 0] as Point,
-    last: null as null | [number, boolean],
-    field: "",
-    clip: "",
+    margin: 24,
+    badgeAt: [0, 0],
+    last: null,
+    segment: -1,
+    written: new WeakMap(),
+  }
+}
+
+/** Sets a style only when it changes: most frames move two or three things. */
+function write(
+  parts: Parts,
+  element: HTMLElement | SVGElement | null | undefined,
+  key: string,
+  value: string,
+) {
+  if (!element) return
+  let values = parts.written.get(element)
+  if (!values) parts.written.set(element, (values = {}))
+  if (values[key] === value) return
+  values[key] = value
+  element.style.setProperty(key, value)
+}
+
+function measurePanel(parts: Parts) {
+  const { root, head, badge } = parts
+  if (!root || !head) return
+  parts.size = { w: root.clientWidth, h: root.clientHeight }
+  parts.column = window.matchMedia(COLUMN_QUERY).matches
+  if (badge) {
+    // The badge sits at the panel's inset; the windows keep the same.
+    parts.margin = badge.offsetLeft
+    parts.badgeAt = [
+      badge.offsetLeft + badge.offsetWidth / 2,
+      badge.offsetTop + badge.offsetHeight / 2,
+    ]
+  }
+  // From here the picture is placed by transform, at its own size, inside
+  // two clip boxes that are placed by transform too.
+  Object.assign(head.style, {
+    inset: "auto",
+    left: "0",
+    top: "0",
+    width: `${HEAD_BOX.width}px`,
+    height: `${HEAD_BOX.height}px`,
+    transformOrigin: "0 0",
+    willChange: "transform",
   })
-
-  useImperativeHandle(ref, () => ({ render }), [])
-
-  function measure() {
-    const root = rootRef.current
-    const image = imageRef.current
-    const badge = badgeRef.current
-    if (!root || !image) return
-    const s = state.current
-    s.size = { w: root.clientWidth, h: root.clientHeight }
-    s.column = window.matchMedia(COLUMN_QUERY).matches
-    if (badge) {
-      s.badge = [
-        badge.offsetLeft + badge.offsetWidth / 2,
-        badge.offsetTop + badge.offsetHeight / 2,
-      ]
-    }
-    // From here the picture is placed by transform, at its own size.
+  for (const image of [parts.headImage, parts.bandImage]) {
+    if (!image) continue
     Object.assign(image.style, {
       inset: "auto",
       left: "0",
@@ -107,101 +173,222 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
       willChange: "transform",
     })
   }
+  parts.written = new WeakMap()
+  parts.segment = -1
+}
 
-  function render(progress: number, reduced: boolean) {
-    const s = state.current
-    s.last = [progress, reduced]
-    const root = rootRef.current
-    const image = imageRef.current
-    const frame = windowRef.current
-    if (!root || !image || !frame || !s.size.w) return
+function renderPanel(parts: Parts, progress: number, reduced: boolean) {
+  parts.last = [progress, reduced]
+  const { root } = parts
+  if (!root || !parts.size.w) return
+  const set = (
+    element: HTMLElement | SVGElement | null | undefined,
+    key: string,
+    value: string,
+  ) => write(parts, element, key, value)
 
-    const q = ((progress % SCENE_COUNT) + SCENE_COUNT) % SCENE_COUNT
-    const index = Math.floor(q)
-    let f = q - index
-    // Reduced motion: no camera, the nearest state, crossfaded through white.
-    let opacity = 1
-    if (reduced) {
-      opacity = clamp(Math.abs(f - 0.5) * 2.5, 0, 1)
-      f = f < 0.5 ? 0 : 1
-    }
-    const a = PANEL_STATES[index]!
-    const b = PANEL_STATES[(index + 1) % SCENE_COUNT]!
-    const e = smootherstep((f - REST) / (1 - 2 * REST))
+  const q = ((progress % SCENE_COUNT) + SCENE_COUNT) % SCENE_COUNT
+  const index = Math.floor(q)
+  let f = q - index
+  // Reduced motion: no camera, the nearest state, crossfaded through white.
+  let opacity = 1
+  if (reduced) {
+    opacity = clamp(Math.abs(f - 0.5) * 2.5, 0, 1)
+    f = f < 0.5 ? 0 : 1
+  }
+  const a = PANEL_STATES[index]!
+  const b = PANEL_STATES[(index + 1) % SCENE_COUNT]!
+  const e = smootherstep((f - REST) / (1 - 2 * REST))
 
-    const layout = s.column ? WINDOW_LAYOUTS.column : WINDOW_LAYOUTS.band
-    const centre: Point = [HERO.size.w / 2, HERO.size.h / 2]
-    const from = a.window
-      ? windowGeometry(s.size, HERO.size, a.window, layout)
-      : openGeometry(s.size, HERO.size, b.window?.focus ?? centre, layout)
-    const to = b.window
-      ? windowGeometry(s.size, HERO.size, b.window, layout)
-      : openGeometry(s.size, HERO.size, a.window?.focus ?? centre, layout)
-    const g = mixGeometry(from, to, e)
+  const layout = parts.column ? WINDOW_LAYOUTS.column : WINDOW_LAYOUTS.band
+  const centre: Point = [HERO.size.w / 2, HERO.size.h / 2]
+  const from = a.window
+    ? windowGeometry(parts.size, HERO.size, a.window, layout, parts.margin)
+    : openGeometry(
+        parts.size,
+        HERO.size,
+        b.window?.focus ?? centre,
+        b.window?.shape ?? "square",
+        layout,
+      )
+  const to = b.window
+    ? windowGeometry(parts.size, HERO.size, b.window, layout, parts.margin)
+    : openGeometry(
+        parts.size,
+        HERO.size,
+        a.window?.focus ?? centre,
+        a.window?.shape ?? "square",
+        layout,
+      )
+  const g = mixGeometry(from, to, e)
+  const { unit, head, band } = windowBoxes(g, OVERLAP)
+  const k = unit / LOCAL
+  const place = (x: number, y: number, scale: number) =>
+    `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(5)})`
 
-    image.style.transform = `translate3d(${g.x}px, ${g.y}px, 0) scale(${g.scale})`
-    const clip = coversPanel(g, s.size)
-      ? "none"
-      : `path("${placePath(COMMA, COMMA_HEAD, COMMA_UNIT, g.cx, g.cy, g.head)}")`
-    if (clip !== s.clip) frame.style.clipPath = s.clip = clip
-
-    const fieldA = a.field ?? b.field
-    const fieldB = b.field ?? a.field
-    const field =
-      fieldA && fieldB
-        ? fieldA === fieldB || e <= 0 || e >= 1
-          ? e >= 1
-            ? fieldB
-            : fieldA
-          : `color-mix(in oklab, ${fieldA} ${((1 - e) * 100).toFixed(1)}%, ${fieldB})`
-        : "#fff"
-    if (field !== s.field) root.style.backgroundColor = s.field = field
-
-    const badge = badgeRef.current
-    if (badge) {
-      badge.style.opacity = String(lerp(+a.badge, +b.badge, e))
-      const half = g.head / 2
-      const onPicture =
-        Math.abs(s.badge[0] - g.cx) < half && Math.abs(s.badge[1] - g.cy) < half
-      badge.toggleAttribute("data-on-field", !onPicture)
-    }
-
-    // The portraits rise as one sheet and leave upwards; their windows lag a
-    // little behind the sheet, for depth.
-    const y =
-      a.team && b.team ? 0 : b.team ? (1 - e) * 100 : a.team ? -e * 100 : 100
-    halvesRef.current.forEach((half) => {
-      if (!half) return
-      half.style.transform = `translate3d(0, ${y}%, 0)`
-      half.style.visibility = Math.abs(y) >= 100 ? "hidden" : ""
-      // `transform`, not `translate`, which centres the window already.
-      const comma = half.firstElementChild as HTMLElement | null
-      if (comma) comma.style.transform = `translate3d(0, ${y * 0.3}%, 0)`
-    })
-
-    root.style.opacity = opacity === 1 ? "" : String(opacity)
+  set(parts.head, "transform", place(head.x, head.y, k))
+  set(
+    parts.headImage,
+    "transform",
+    place((g.x - head.x) / k, (g.y - head.y) / k, g.scale / k),
+  )
+  // The band only exists while there is a tail inside the panel.
+  const bandBottom = band.y + BAND_BOX.height * k
+  const showBand = g.tail > 0.001 && band.y < parts.size.h && bandBottom > 0
+  set(parts.band, "visibility", showBand ? "visible" : "hidden")
+  if (showBand) {
+    set(parts.band, "transform", place(band.x, band.y, k))
+    set(
+      parts.bandImage,
+      "transform",
+      place((g.x - band.x) / k, (g.y - band.y) / k, g.scale / k),
+    )
   }
 
+  // The field: the segment's two colours, the second fading in.
+  const fieldA = a.field ?? b.field ?? "#fff"
+  const fieldB = b.field ?? a.field ?? "#fff"
+  if (parts.segment !== index) {
+    parts.segment = index
+    set(parts.fields[0], "background-color", fieldA)
+    set(parts.fields[1], "background-color", fieldB)
+    set(parts.covers[0], "fill", fieldA)
+    set(parts.covers[1], "fill", fieldB)
+  }
+  const blend = fieldA === fieldB ? "0" : e.toFixed(3)
+  set(parts.fields[1], "opacity", blend)
+  set(parts.covers[1], "opacity", blend)
+
+  const { badge, badgeAt } = parts
+  if (badge) {
+    set(badge, "opacity", lerp(+a.badge, +b.badge, e).toFixed(3))
+    const onPicture =
+      badgeAt[0] > head.x &&
+      badgeAt[0] < head.x + HEAD_BOX.width * k &&
+      badgeAt[1] > head.y &&
+      badgeAt[1] < head.y + HEAD_BOX.height * k
+    badge.toggleAttribute("data-on-field", !onPicture)
+  }
+
+  // The portraits rise as one sheet and leave upwards; their windows lag a
+  // little behind the sheet, for depth.
+  const y =
+    a.team && b.team ? 0 : b.team ? (1 - e) * 100 : a.team ? -e * 100 : 100
+  for (const half of parts.halves) {
+    if (!half) continue
+    set(half, "transform", `translate3d(0, ${y.toFixed(2)}%, 0)`)
+    set(half, "visibility", Math.abs(y) >= 100 ? "hidden" : "visible")
+    // `transform`, not `translate`, which centres the window already.
+    const frame = half.firstElementChild as HTMLElement | null
+    set(frame, "transform", `translate3d(0, ${(y * 0.3).toFixed(2)}%, 0)`)
+  }
+
+  set(root, "opacity", opacity === 1 ? "1" : opacity.toFixed(3))
+}
+
+export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
+  const partsRef = useRef<Parts>(createParts())
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      render: (progress, reduced) =>
+        renderPanel(partsRef.current, progress, reduced),
+    }),
+    [],
+  )
+
   useEffect(() => {
-    const root = rootRef.current
+    const parts = partsRef.current
+    const root = parts.root
     if (!root) return
     const observer = new ResizeObserver(() => {
-      measure()
-      const last = state.current.last
-      if (last) render(...last)
+      measurePanel(parts)
+      if (parts.last) renderPanel(parts, ...parts.last)
     })
     observer.observe(root)
     return () => observer.disconnect()
   }, [])
 
+  const imageClass =
+    "absolute inset-0 size-full max-w-none object-cover object-[50%_36%] cols:object-center"
+
   return (
     <div
-      ref={rootRef}
+      ref={(element) => {
+        partsRef.current.root = element
+      }}
       className="@container absolute inset-0 overflow-hidden bg-white"
     >
-      <div ref={windowRef} className="absolute inset-0">
+      {/* The field: two solid layers, the upper fading in between colours. */}
+      {[0, 1].map((layer) => (
+        <div
+          key={layer}
+          ref={(element) => {
+            partsRef.current.fields[layer] = element
+          }}
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-0",
+            layer === 1 && "opacity-0 will-change-[opacity]",
+          )}
+        />
+      ))}
+
+      {/* The band under the head: the tail, its curve carved by the covers.
+          Before the head, so the head paints over the part they share. */}
+      <div
+        ref={(element) => {
+          partsRef.current.band = element
+        }}
+        aria-hidden="true"
+        className="absolute top-0 left-0 origin-top-left overflow-hidden will-change-transform"
+        style={{
+          width: BAND_BOX.width,
+          height: BAND_BOX.height,
+          visibility: "hidden",
+        }}
+      >
         <Image
-          ref={imageRef}
+          ref={(element) => {
+            partsRef.current.bandImage = element
+          }}
+          src={HERO.image}
+          alt=""
+          sizes="1086px"
+          quality={85}
+          loading="eager"
+          className={imageClass}
+        />
+        {[0, 1].map((layer) => (
+          <svg
+            key={layer}
+            ref={(element) => {
+              partsRef.current.covers[layer] = element
+            }}
+            viewBox={BAND_VIEW_BOX}
+            preserveAspectRatio="none"
+            className={cn(
+              "absolute inset-0 size-full overflow-visible",
+              layer === 1 && "opacity-0 will-change-[opacity]",
+            )}
+          >
+            <path d={COMMA.covers} />
+          </svg>
+        ))}
+      </div>
+
+      {/* The head: the whole picture until the stage takes over. */}
+      <div
+        ref={(element) => {
+          partsRef.current.head = element
+        }}
+        className="absolute inset-0 overflow-hidden"
+      >
+        <Image
+          ref={(element) => {
+            partsRef.current.headImage = element
+          }}
           src={HERO.image}
           alt={HERO.alt}
           sizes="1086px"
@@ -209,15 +396,22 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
           placeholder="blur"
           loading="eager"
           fetchPriority="high"
-          className="cols:object-center absolute inset-0 size-full max-w-none object-cover object-[50%_36%]"
+          className={imageClass}
         />
       </div>
 
       <div
-        ref={badgeRef}
+        ref={(element) => {
+          partsRef.current.badge = element
+        }}
         aria-hidden="true"
-        className="absolute top-[5cqw] left-[5cqw] font-bold tracking-[-0.01em] text-black transition-colors duration-300 data-[on-field]:text-white motion-reduce:transition-none"
-        style={{ fontSize: "clamp(13px, 2.6cqw, 22px)", lineHeight: 1.15 }}
+        className="absolute font-bold tracking-[-0.01em] text-black transition-colors duration-300 data-[on-field]:text-white motion-reduce:transition-none"
+        style={{
+          top: "var(--inset, 5cqw)",
+          left: "var(--inset, 5cqw)",
+          fontSize: "clamp(13px, 2.6cqw, 22px)",
+          lineHeight: 1.15,
+        }}
       >
         <GridFrame>Answerable AP</GridFrame>
       </div>
@@ -227,7 +421,7 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
           <Portrait
             key={person.name}
             ref={(element) => {
-              halvesRef.current[index] = element
+              partsRef.current.halves[index] = element
             }}
             person={person}
             index={index}
@@ -239,9 +433,10 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
 }
 
 /**
- * One person on their own colour, seen through the comma, as the values are.
- * The band puts the two side by side; the column one above the other, the windows
- * staggered left and right.
+ * One person on their own colour, seen through the logo's square or comma,
+ * as the values are. The band puts the two side by side, the windows
+ * centred; the column one above the other, the first window on the panel's
+ * right inset and the second on its left.
  */
 function Portrait({
   ref,
@@ -252,10 +447,11 @@ function Portrait({
   person: Person
   index: number
 }) {
+  const square = person.shape === "square"
   return (
     <div
       ref={ref}
-      className="@container relative overflow-hidden"
+      className="[container-type:size] relative overflow-hidden will-change-transform"
       style={{
         backgroundColor: person.colour,
         transform: "translate3d(0, 100%, 0)",
@@ -264,10 +460,16 @@ function Portrait({
     >
       <div
         className={cn(
-          "absolute top-1/2 left-1/2 aspect-[48.21/72.002] h-[74%] -translate-x-1/2 -translate-y-[44%]",
-          index === 0 ? "cols:left-[64%]" : "cols:left-[36%]",
+          "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden",
+          // Sized by the half's smaller side: the two heads match.
+          square
+            ? "aspect-square h-[min(54cqh,62cqw)]"
+            : "aspect-[48.21/72.002] h-[min(80cqh,calc(62cqw*1.4935))]",
+          index === 0
+            ? "cols:right-[var(--inset)] cols:left-auto cols:translate-x-0"
+            : "cols:left-[var(--inset)] cols:translate-x-0",
         )}
-        style={COMMA_MASK}
+        style={square ? undefined : COMMA_MASK}
       >
         {person.portrait ? (
           <Image
@@ -285,9 +487,12 @@ function Portrait({
               backgroundColor: `color-mix(in oklab, ${person.colour} 55%, white)`,
             }}
           >
-            {/* The head is the top two thirds of the comma. */}
+            {/* In the comma, the head is its top two thirds. */}
             <span
-              className="absolute inset-x-0 top-0 grid h-[66.6%] place-items-center font-bold tracking-[-0.02em] text-black"
+              className={cn(
+                "absolute inset-x-0 top-0 grid place-items-center font-bold tracking-[-0.02em] text-black",
+                square ? "h-full" : "h-[66.4%]",
+              )}
               style={{ fontSize: "clamp(18px, 9cqh, 40px)" }}
             >
               {person.initials}

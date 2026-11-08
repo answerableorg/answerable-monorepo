@@ -237,7 +237,7 @@ function Scene({
       data-from={from}
       data-to={to}
       aria-labelledby={labelledBy}
-      className="group/scene stage:absolute stage:inset-0 stage:band:pt-5 stage:cols:justify-center flex flex-col"
+      className="group/scene stage:absolute stage:inset-0 stage:band:pt-6 stage:cols:justify-center flex flex-col"
     >
       {children}
     </section>
