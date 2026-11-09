@@ -52,12 +52,12 @@ About 200 words in all, down from about 620. Values and the cohort lines are the
 
 **Hero.**
 
-- Headline: **Make your use of AI a reason clients choose you.**
-- Line: Answerable trains and accredits the people who lead AI in professional practices. Put yours forward for the founding cohort.
+- Headline: **The professional standard for responsible AI.** (owner, 2026-11-09)
+- Line: Answerable trains and accredits the people who lead AI in professional practices. Register to join the founding cohort.
 - Note under the form: Places are limited. Registering does not commit you to enrol.
-- Alternatives: "Your clients will ask how you use AI. Give them an answer you can stand behind." · "Use AI in a way your practice can answer for."
+- Earlier headline: "Make your use of AI a reason clients choose you." Alternatives: "Your clients will ask how you use AI. Give them an answer you can stand behind." · "Use AI in a way your practice can answer for."
 
-**Programme.** Kicker "The Answerable AP programme". Title: One accredited AI Lead. A practice that can answer for its AI.
+**Programme.** Kicker "The Answerable AP programme". Title: One accredited AI Lead. A practice that can answer for its AI. One sentence per line, so "A" never ends the first.
 
 - The skills to lead your practice's approach to AI
 - An AI policy and handbook shaped around how you work

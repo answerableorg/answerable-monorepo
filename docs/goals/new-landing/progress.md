@@ -88,3 +88,8 @@
 - Every value's field is white, as the programme's is, and the portraits sit on white halves (their comma tails keep the photographs' own grey and black). Neighbouring scenes in one field colour now share a layer, so the panel has one white field and one tail cover instead of seven of each. The stamp shows on the hero only, fading out over the first scroll and back in on the loop.
 - Left as they were, not asked: the values' index highlight and rail squares in the four colours, and the people's coloured squares beside their names.
 - Checked at 13 positions on desktop and phone: white panel throughout, stamp opacity 1 at the hero and 0 from the programme on, no console errors. Gates: web test 171 pass, typecheck, lint, build, knip clean.
+
+## 2026-11-09, hero line
+
+- Owner: hero headline "The professional standard for responsible AI."; the line under it ends "Register to join the founding cohort."; the programme title's "A" should start the second line, not end the first.
+- The programme title sets each sentence on its own line, so "A practice that can answer for its AI." always starts a line.

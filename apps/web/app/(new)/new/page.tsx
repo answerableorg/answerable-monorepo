@@ -62,7 +62,7 @@ export default function Page() {
               FORM_ONLY,
             )}
           >
-            Make your use of AI a reason clients choose you.
+            The professional standard for responsible AI.
           </h1>
           <p
             data-line
@@ -74,7 +74,7 @@ export default function Page() {
             )}
           >
             Answerable trains and accredits the people who lead AI in
-            professional practices. Put yours forward for the founding cohort.
+            professional practices. Register to join the founding cohort.
           </p>
           <div
             data-line
@@ -88,8 +88,12 @@ export default function Page() {
           <p data-line className={KICKER}>
             The Answerable AP programme
           </p>
+          {/* One sentence per line, so "A" never ends the first. */}
           <h2 data-line id="programme-heading" className={cn(TITLE, "mt-2")}>
-            One accredited AI Lead. A practice that can answer for its AI.
+            <span className="block">One accredited AI Lead.</span>{" "}
+            <span className="block">
+              A practice that can answer for its AI.
+            </span>
           </h2>
           <ul className="cols:mt-6 cols:gap-2 mt-4 flex flex-col gap-1">
             {BENEFITS.map((benefit) => (
