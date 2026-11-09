@@ -338,6 +338,7 @@ describe("unit: Hono application", () => {
     const app = createApp({
       auth: stubAuth(),
       db: stubDatabase(),
+      clientOrigins: { allowed: async () => false },
       environment: testEnvironment({
         trustedOrigins: ["https://chat.example.com"],
       }),

@@ -326,6 +326,35 @@ test("registered public clients still need the native PKCE proof", async () => {
   expect((await redeem(verifier)).status).toBe(200);
 });
 
+test("a public client's code exchange from its redirect origin succeeds with CORS for that origin, without credentials", async () => {
+  await fixture.db
+    .update(oauthClients)
+    .set({ tokenEndpointAuthMethod: "none", clientSecret: null })
+    .where(eq(oauthClients.clientId, clientId));
+  const code = await authorize();
+  const origin = new URL(redirect).origin;
+  const response = await auth.handler(
+    new Request(`${fixture.environment.betterAuthUrl}/auth/oauth2/token`, {
+      method: "POST",
+      headers: {
+        origin,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: clientId,
+        code,
+        code_verifier: verifier,
+        redirect_uri: redirect,
+        resource,
+      }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+  expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+});
+
 test("an administratively registered POST client completes PKCE login, UserInfo and method-bound refresh", async () => {
   const postClientId = "librechat-staging";
   const scopes = ["openid", "email", "offline_access"];
