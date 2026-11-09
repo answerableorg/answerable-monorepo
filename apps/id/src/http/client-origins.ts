@@ -2,6 +2,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { withDatabaseScope } from "../db/isolation.ts";
 import { oauthClients } from "../db/schema/index.ts";
+import { logEvent } from "../lib/log.ts";
+import { errorFields } from "./problem.ts";
+
+/** The read failed: the error's class and SQLSTATE, never its message (`errorFields`). */
+export function reportReadFailure(error: unknown) {
+  logEvent("auth", "client_origins_read_failed", errorFields(error));
+}
 
 export type ClientOrigins = { allowed(origin: string): Promise<boolean> };
 
@@ -44,8 +51,7 @@ export function createClientOrigins(
     retryMs = 5_000,
     now = Date.now,
     load = () => readOrigins(db),
-    onError = (error: unknown) =>
-      console.error("client origins: the read of public clients failed", error),
+    onError = reportReadFailure,
   }: {
     ttlMs?: number;
     retryMs?: number;

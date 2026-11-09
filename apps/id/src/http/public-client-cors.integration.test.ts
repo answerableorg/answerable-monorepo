@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createAdminFixture, type AdminFixture } from "../__tests__/admin.ts";
 import { oauthClients } from "../db/schema/index.ts";
 import { createId } from "../lib/id.ts";
-import { createClientOrigins } from "./client-origins.ts";
+import { createClientOrigins, reportReadFailure } from "./client-origins.ts";
 
 const webOrigin = "https://cloud.example";
 const confidentialOrigin = "https://confidential.example";
@@ -229,5 +229,19 @@ test("the authorization, session and sign-in paths get no CORS header for a clie
         "access-control-allow-origin",
       ),
     ).toBeNull();
+  }
+});
+
+test("a failed read is logged by its class, never its message", () => {
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    reportReadFailure(new TypeError("password=secret in a query"));
+    expect(log).toHaveBeenCalledTimes(1);
+    const line = log.mock.calls[0]!.join(" ");
+    expect(line).toContain("client_origins_read_failed");
+    expect(line).toContain("TypeError");
+    expect(line).not.toContain("secret");
+  } finally {
+    log.mockRestore();
   }
 });
