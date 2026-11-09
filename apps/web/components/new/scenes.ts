@@ -3,7 +3,7 @@ import type { StaticImageData } from "next/image"
 import hero from "@/assets/new/hero.webp"
 import keir from "@/assets/new/keir.webp"
 import sadie from "@/assets/new/sadie.webp"
-import type { Shape, Window, WindowLayout } from "@/lib/stage-math"
+import type { Window, WindowLayout } from "@/lib/stage-math"
 
 /**
  * The /new stage, as data: the scenes in scroll order, what the image panel
@@ -26,6 +26,7 @@ const SAND = "var(--highlight-2)"
 const GREEN = "var(--highlight-3)"
 const CORAL = "var(--highlight-4)"
 const BLACK = "#000"
+const WHITE = "#fff"
 
 export type Value = {
   text: string
@@ -100,9 +101,9 @@ const OPEN: PanelState = {
 export const PANEL_STATES: readonly PanelState[] = [
   // Hero: the whole picture and the badge on its sky.
   { ...OPEN, badge: true },
-  // Programme: black closes in to the model, the work itself.
+  // Programme: white closes in to the model, the work itself.
   {
-    field: BLACK,
+    field: WHITE,
     window: { focus: [556, 786], span: 760, size: 1.75, shape: "comma" },
     badge: true,
     team: false,
@@ -132,33 +133,45 @@ export type Person = {
   name: string
   line: string
   colour: string
-  /** The portrait's window: the logo's square or its comma. */
-  shape: Shape
-  /** A black and white photograph, square. */
+  /** The comma turned over, tail up: an opening quote mark. */
+  turned: boolean
+  /** A black and white photograph, square, in the comma's head. */
   portrait: StaticImageData
   /**
-   * The photograph's `object-position` in the window. The comma is narrower
-   * than the photograph and crops its sides: this puts the face in its head.
+   * The photograph's framing in the head: a zoom about its centre, then a
+   * shift in percent of the head, to give the face room.
    */
-  position: string
+  frame: { scale: number; x: number; y: number }
+  /**
+   * The tail continues the photograph's edge where it meets it: `tone` is
+   * that edge's grey, and `fade` blends the photograph into it (a wall needs
+   * it; a dark coat that reaches the edge already is the tone).
+   */
+  tail: { tone: string; fade: boolean }
 }
 
+/**
+ * The two people as a pair of quote marks: Keir's comma turned over, the
+ * opening one, and Sadie's as the logo has it, the closing one.
+ */
 export const PEOPLE: readonly Person[] = [
   {
     name: "Keir Regan-Alexander",
     line: "Has helped more than 100 AEC firms develop their approach to AI over the past three years.",
     colour: GREEN,
-    shape: "square",
+    turned: true,
     portrait: keir,
-    position: "50% 50%",
+    frame: { scale: 1.25, x: 0, y: 10 },
+    tail: { tone: "#838383", fade: true },
   },
   {
     name: "Sadie Morgan OBE",
     line: "Co-founder of Stirling Prize-winning dRMM and founder of the Quality of Life Foundation.",
     colour: SKY,
-    shape: "comma",
+    turned: false,
     portrait: sadie,
-    position: "30% 50%",
+    frame: { scale: 1.25, x: 7, y: 2 },
+    tail: { tone: "#111", fade: false },
   },
 ]
 

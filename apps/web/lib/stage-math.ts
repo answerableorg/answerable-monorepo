@@ -18,11 +18,24 @@ function smoothstep(edge0: number, edge1: number, x: number) {
   return t * t * (3 - 2 * t)
 }
 
-/** Perlin's smootherstep on 0..1: no speed and no acceleration at either end. */
-export function smootherstep(x: number) {
+/**
+ * The pace of a change the scroll plays: half linear, half smoothstep. It
+ * moves with the first pixel of scroll, at half speed, and still lands
+ * softly. The browser's own smooth scroll, which a snap plays, eases the rest:
+ * a flatter curve here, such as smootherstep, stacks on it and the page is
+ * slow to answer (at a tenth of the scroll, smootherstep has moved 1%).
+ */
+export function scrub(x: number) {
   const t = clamp(x, 0, 1)
-  return t * t * t * (t * (t * 6 - 15) + 10)
+  return 0.5 * t + 0.5 * t * t * (3 - 2 * t)
 }
+
+/**
+ * A scene's copy is in place by this share of the scroll. A snap's smooth
+ * scroll spends about 300 ms on its last tenth (Chrome, one screen): copy
+ * that waited for the very end would still be arriving.
+ */
+export const LAND = 0.92
 
 /**
  * The scroll as a position among scenes: 0 on the first snap point, 1 on the
@@ -74,11 +87,18 @@ export function lineFrame(
   // Entering, the first line leads; leaving, the first line leads too, so
   // the last one waits longest.
   const lag = offset <= 0 ? index : count - 1 - index
-  const local = clamp((presence - lag * stagger) / (1 - spread), 0, 1)
-  const eased = smootherstep(local)
+  // The line's own stretch of the scroll, ending by LAND.
+  const start = lag * stagger
+  const width = LAND - spread
+  const eased = scrub((presence - start) / width)
   return {
-    // Gone before the next scene's lines arrive: no two scenes ghost together.
-    opacity: smoothstep(0.5, 1, local),
+    // Seen only past the midpoint, every line: the scene going and the scene
+    // coming never show together.
+    opacity: smoothstep(
+      Math.max(0.5, start + width / 2),
+      start + width,
+      presence,
+    ),
     shift: (1 - eased) * (offset < 0 ? 1 : offset > 0 ? -1 : 0),
   }
 }
@@ -89,8 +109,8 @@ export function lineFrame(
  * it is well inside the window, so no sliver shows at the edge.
  */
 export function rollFrame(offset: number): { opacity: number; shift: number } {
-  const presence = 1 - Math.min(Math.abs(offset), 1)
-  const eased = smootherstep(presence)
+  const presence = clamp((1 - Math.min(Math.abs(offset), 1)) / LAND, 0, 1)
+  const eased = scrub(presence)
   return {
     opacity: smoothstep(0.2, 0.75, presence),
     shift: (1 - eased) * (offset < 0 ? 1 : offset > 0 ? -1 : 0),

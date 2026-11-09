@@ -16,7 +16,7 @@ import {
   rollFrame,
   offsetFrom,
   progressAt,
-  smootherstep,
+  scrub,
 } from "@/lib/stage-math"
 import { cn } from "@answerable/ui/lib/utils"
 
@@ -24,11 +24,6 @@ import { cn } from "@answerable/ui/lib/utils"
 const SNAPS = SCENE_COUNT + 1
 /** How far a line travels as it enters or leaves, in pixels. */
 const LINE_TRAVEL = 24
-/**
- * The drawn progress follows the scroll with this time constant, in seconds:
- * enough to smooth a wheel's steps, short enough to feel attached.
- */
-const LAG = 0.045
 /** Navigation further than this many scenes cuts through a fade. */
 const SMOOTH_REACH = 2
 
@@ -121,9 +116,7 @@ export function Stage({
 
     let tops: number[] = []
     let target = 0
-    let shown = 0
     let frame = 0
-    let last = 0
     let frozen = false
     let settleTimer = 0
     let railIndex = -1
@@ -212,7 +205,7 @@ export function Stage({
       const index = Math.floor(position)
       const eased = reduced
         ? Math.round(position - index)
-        : smootherstep(position - index)
+        : scrub(position - index)
       const next = Math.min(index + 1, count - 1)
       scene.marks.forEach((mark, k) => {
         const distance = Math.abs(index + eased - k)
@@ -242,32 +235,23 @@ export function Stage({
       }
     }
 
-    const tick = (now: number) => {
+    // Drawn once a frame at exactly the scroll's position. The scroll is
+    // already smooth (the browser plays a snap as a smooth scroll), so any
+    // smoothing here only trails it: 45 ms of lag left the page drifting for
+    // 100 ms after the scroll had stopped.
+    const tick = () => {
       frame = 0
-      const dt = Math.min((now - last) / 1000, 0.1)
-      last = now
-      if (
-        reducedQuery.matches ||
-        Math.abs(target - shown) > SMOOTH_REACH + 0.5
-      ) {
-        shown = target
-      } else {
-        shown += (target - shown) * (1 - Math.exp(-dt / LAG))
-        if (Math.abs(target - shown) < 0.0005) shown = target
-      }
-      apply(shown)
-      if (shown !== target) frame = requestAnimationFrame(tick)
+      apply(target)
     }
     const schedule = () => {
       if (frame) return
-      last = performance.now()
       frame = requestAnimationFrame(tick)
     }
     const jumpTo = (progress: number) => {
-      target = shown = progress
+      target = progress
       cancelAnimationFrame(frame)
       frame = 0
-      apply(shown)
+      apply(target)
     }
 
     /** At rest on the last snap point: back to the top, which looks the same. */
@@ -286,8 +270,8 @@ export function Stage({
       settleTimer = window.setTimeout(settle, 180)
     }
 
-    // A phone's bars resize the window mid-scroll: measure again and keep
-    // easing towards the new position rather than jumping to it.
+    // A phone's bars resize the window mid-scroll: measure again. The snap
+    // points are small-viewport tall, so the position barely moves.
     const onResize = () => {
       measure()
       if (frozen) return
@@ -308,7 +292,7 @@ export function Stage({
       frozen = false
       html.removeAttribute("data-frozen")
       measure()
-      const scene = Math.round(shown)
+      const scene = Math.round(target)
       window.scrollTo({ top: tops[scene] ?? 0, behavior: "instant" })
       jumpTo(scene)
       settle()
@@ -542,7 +526,12 @@ function Rail({ ref }: { ref: Ref<HTMLOListElement> }) {
             className="group/rail grid size-6 items-end justify-items-center"
             style={{ "--rail": colour } as CSSProperties}
           >
-            <span className="bg-muted-foreground/30 size-1.5 origin-bottom transition-[background-color,scale] duration-300 group-hover/rail:bg-[var(--rail)] group-data-[active]/rail:scale-[1.67] group-data-[active]/rail:bg-[var(--rail)] motion-reduce:transition-none" />
+            {/* Compositor only: the square scales and its colour fades in as
+                a layer of its own. A transition of `background-color` paints,
+                and its end cost a frame on every arrival. */}
+            <span className="bg-muted-foreground/30 relative size-1.5 origin-bottom transition-[scale] duration-300 will-change-[scale] group-data-[active]/rail:scale-[1.67] motion-reduce:transition-none">
+              <span className="absolute inset-0 bg-[var(--rail)] opacity-0 transition-opacity duration-300 will-change-[opacity] group-hover/rail:opacity-100 group-data-[active]/rail:opacity-100 motion-reduce:transition-none" />
+            </span>
           </button>
         </li>
       ))}

@@ -24,7 +24,7 @@ import {
   lerp,
   mixGeometry,
   openGeometry,
-  smootherstep,
+  scrub,
   windowBoxes,
   windowGeometry,
   type Point,
@@ -51,21 +51,43 @@ const BAND_BOX = {
   height: (COMMA.band.h + OVERLAP) * LOCAL,
 }
 const BAND_VIEW_BOX = `0 ${-OVERLAP} ${COMMA.band.w} ${COMMA.band.h + OVERLAP}`
+/**
+ * The band starts left of the head (the tail's foot reaches 0.21 further) and
+ * rises under it by the overlap: this covers the sliver of that rise left of
+ * the head. It runs past the band's top and under the head, so none of its
+ * edges meets another one.
+ */
+const OVERLAP_COVER = `M-2 ${-OVERLAP - 2}H${(COMMA.head.x - COMMA.band.x + 1).toFixed(3)}V0.5H-2Z`
 
-const COMMA_MASK: CSSProperties = {
-  maskImage: `url("data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${COMMA_VIEW_BOX}"><path d="${COMMA_PATH}"/></svg>`,
-  )}")`,
-  maskSize: "100% 100%",
-  maskRepeat: "no-repeat",
+/** The comma as a mask, as the logo has it or turned over (tail up). */
+function commaMask(turned: boolean): CSSProperties {
+  const [x, y, w, h] = COMMA_VIEW_BOX.split(" ").map(Number) as [
+    number,
+    number,
+    number,
+    number,
+  ]
+  const turn = turned
+    ? ` transform="rotate(180 ${x + w / 2} ${y + h / 2})"`
+    : ""
+  return {
+    maskImage: `url("data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${COMMA_VIEW_BOX}"><path d="${COMMA_PATH}"${turn}/></svg>`,
+    )}")`,
+    maskSize: "100% 100%",
+    maskRepeat: "no-repeat",
+  }
 }
+const COMMA_MASKS = [commaMask(false), commaMask(true)] as const
+/** The head's share of the comma's height. */
+const HEAD_SHARE = COMMA.head.h / (COMMA.head.h + COMMA.band.h)
 
 /** The `cols` variant in globals.css: the column beside the copy, else the band. */
 const COLUMN_QUERY =
   "(min-width: 64rem), (min-width: 40rem) and (min-aspect-ratio: 4/3)"
 
 /** A transition rests still for this share of the scroll at either end. */
-const REST = 0.04
+const REST = 0.02
 
 /**
  * The image panel: the hero illustration seen through the logo's square or
@@ -95,7 +117,6 @@ type Parts = {
   size: Size
   column: boolean
   margin: number
-  badgeAt: Point
   last: null | [number, boolean]
   segment: number
   written: WeakMap<Element, Record<string, string>>
@@ -115,7 +136,6 @@ function createParts(): Parts {
     size: { w: 0, h: 0 },
     column: true,
     margin: 24,
-    badgeAt: [0, 0],
     last: null,
     segment: -1,
     written: new WeakMap(),
@@ -142,14 +162,8 @@ function measurePanel(parts: Parts) {
   if (!root || !head) return
   parts.size = { w: root.clientWidth, h: root.clientHeight }
   parts.column = window.matchMedia(COLUMN_QUERY).matches
-  if (badge) {
-    // The badge sits at the panel's inset; the windows keep the same.
-    parts.margin = badge.offsetLeft
-    parts.badgeAt = [
-      badge.offsetLeft + badge.offsetWidth / 2,
-      badge.offsetTop + badge.offsetHeight / 2,
-    ]
-  }
+  // The badge sits at the panel's inset; the windows keep the same.
+  if (badge) parts.margin = badge.offsetLeft
   // From here the picture is placed by transform, at its own size, inside
   // two clip boxes that are placed by transform too.
   Object.assign(head.style, {
@@ -198,7 +212,20 @@ function renderPanel(parts: Parts, progress: number, reduced: boolean) {
   }
   const a = PANEL_STATES[index]!
   const b = PANEL_STATES[(index + 1) % SCENE_COUNT]!
-  const e = smootherstep((f - REST) / (1 - 2 * REST))
+  const step = scrub((f - REST) / (1 - 2 * REST))
+  // The portraits come in two fades, so a face never shows over the
+  // picture: arriving, the colours cover the panel in the first half, then
+  // the photographs appear on them while the picture behind moves, unseen;
+  // leaving, the photographs go first, then the colours over a still picture.
+  const arriving = b.team && !a.team
+  const leaving = a.team && !b.team
+  const first = clamp(step * 2, 0, 1)
+  const second = clamp(step * 2 - 1, 0, 1)
+  const colours =
+    a.team && b.team ? 1 : arriving ? first : leaving ? 1 - second : 0
+  const photographs =
+    a.team && b.team ? 1 : arriving ? second : leaving ? 1 - first : 0
+  const e = arriving ? clamp(step * 2 - 1, 0, 1) : step
 
   const layout = parts.column ? WINDOW_LAYOUTS.column : WINDOW_LAYOUTS.band
   const centre: Point = [HERO.size.w / 2, HERO.size.h / 2]
@@ -259,28 +286,13 @@ function renderPanel(parts: Parts, progress: number, reduced: boolean) {
   set(parts.fields[1], "opacity", blend)
   set(parts.covers[1], "opacity", blend)
 
-  const { badge, badgeAt } = parts
-  if (badge) {
-    set(badge, "opacity", lerp(+a.badge, +b.badge, e).toFixed(3))
-    const onPicture =
-      badgeAt[0] > head.x &&
-      badgeAt[0] < head.x + HEAD_BOX.width * k &&
-      badgeAt[1] > head.y &&
-      badgeAt[1] < head.y + HEAD_BOX.height * k
-    badge.toggleAttribute("data-on-field", !onPicture)
-  }
+  set(parts.badge, "opacity", lerp(+a.badge, +b.badge, e).toFixed(3))
 
-  // The portraits rise as one sheet and leave upwards; their windows lag a
-  // little behind the sheet, for depth.
-  const y =
-    a.team && b.team ? 0 : b.team ? (1 - e) * 100 : a.team ? -e * 100 : 100
   for (const half of parts.halves) {
-    if (!half) continue
-    set(half, "transform", `translate3d(0, ${y.toFixed(2)}%, 0)`)
-    set(half, "visibility", Math.abs(y) >= 100 ? "hidden" : "visible")
-    // `transform`, not `translate`, which centres the window already.
-    const frame = half.firstElementChild as HTMLElement | null
-    set(frame, "transform", `translate3d(0, ${(y * 0.3).toFixed(2)}%, 0)`)
+    set(half, "opacity", colours.toFixed(3))
+    set(half, "visibility", colours > 0 ? "visible" : "hidden")
+    const comma = half?.firstElementChild as HTMLElement | null
+    set(comma, "opacity", photographs.toFixed(3))
   }
 
   set(root, "opacity", opacity === 1 ? "1" : opacity.toFixed(3))
@@ -336,30 +348,35 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
       ))}
 
       {/* The band under the head: the tail, its curve carved by the covers.
-          Before the head, so the head paints over the part they share. */}
+          Before the head, so the head paints over the part they share. The
+          picture is clipped inside the band and the covers run past that
+          clip: were both cut at one edge, the picture would show through
+          their two soft edges as a hairline. */}
       <div
         ref={(element) => {
           partsRef.current.band = element
         }}
         aria-hidden="true"
-        className="absolute top-0 left-0 origin-top-left overflow-hidden will-change-transform"
+        className="absolute top-0 left-0 origin-top-left will-change-transform"
         style={{
           width: BAND_BOX.width,
           height: BAND_BOX.height,
           visibility: "hidden",
         }}
       >
-        <Image
-          ref={(element) => {
-            partsRef.current.bandImage = element
-          }}
-          src={HERO.image}
-          alt=""
-          sizes="1086px"
-          quality={85}
-          loading="eager"
-          className={imageClass}
-        />
+        <div className="absolute inset-0 overflow-hidden">
+          <Image
+            ref={(element) => {
+              partsRef.current.bandImage = element
+            }}
+            src={HERO.image}
+            alt=""
+            sizes="1086px"
+            quality={85}
+            loading="eager"
+            className={imageClass}
+          />
+        </div>
         {[0, 1].map((layer) => (
           <svg
             key={layer}
@@ -374,6 +391,7 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
             )}
           >
             <path d={COMMA.covers} />
+            <path d={OVERLAP_COVER} />
           </svg>
         ))}
       </div>
@@ -405,7 +423,7 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
           partsRef.current.badge = element
         }}
         aria-hidden="true"
-        className="absolute font-bold tracking-[-0.01em] text-black transition-colors duration-300 data-[on-field]:text-white motion-reduce:transition-none"
+        className="absolute font-bold tracking-[-0.01em] text-black"
         style={{
           top: "var(--inset, 5cqw)",
           left: "var(--inset, 5cqw)",
@@ -435,10 +453,11 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
 }
 
 /**
- * One person on their own colour, seen through the logo's square or comma,
- * as the values are. The band puts the two side by side, the windows
- * centred; the column one above the other, the first window on the panel's
- * right inset and the second on its left.
+ * One person on their own colour, in the logo's comma: the photograph in its
+ * head, the tail in the photograph's own edge tone. Keir's comma is turned
+ * over and Sadie's is not, so the pair reads as quote marks. The band puts
+ * the two side by side, the commas centred; the column one above the other,
+ * the opening one on the panel's left inset and the closing one on its right.
  */
 function Portrait({
   ref,
@@ -449,39 +468,54 @@ function Portrait({
   person: Person
   index: number
 }) {
-  const square = person.shape === "square"
+  const { turned, frame, tail } = person
   return (
     <div
       ref={ref}
-      className="[container-type:size] relative overflow-hidden will-change-transform"
+      className="[container-type:size] relative overflow-hidden will-change-[opacity]"
       style={{
         backgroundColor: person.colour,
-        transform: "translate3d(0, 100%, 0)",
+        opacity: 0,
         visibility: "hidden",
       }}
     >
       <div
         className={cn(
-          "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden",
-          // Sized by the half's smaller side: the two heads match.
-          square
-            ? "aspect-square h-[min(54cqh,62cqw)]"
-            : "aspect-[48.21/72.002] h-[min(80cqh,calc(62cqw*1.4935))]",
+          "absolute top-1/2 left-1/2 aspect-[48.21/72.002] h-[min(80cqh,calc(62cqw*1.4935))] -translate-x-1/2 -translate-y-1/2 will-change-[opacity]",
           index === 0
-            ? "cols:right-[var(--inset)] cols:left-auto cols:translate-x-0"
-            : "cols:left-[var(--inset)] cols:translate-x-0",
+            ? "cols:left-[var(--inset)] cols:translate-x-0"
+            : "cols:right-[var(--inset)] cols:left-auto cols:translate-x-0",
         )}
-        style={square ? undefined : COMMA_MASK}
+        style={{ ...COMMA_MASKS[turned ? 1 : 0], backgroundColor: tail.tone }}
       >
-        <Image
-          src={person.portrait}
-          alt={`Portrait of ${person.name}`}
-          fill
-          sizes="(min-width: 64rem) 25vw, 50vw"
-          quality={85}
-          className="object-cover"
-          style={{ objectPosition: person.position }}
-        />
+        <div
+          className={cn(
+            "absolute inset-x-0 overflow-hidden",
+            turned ? "bottom-0" : "top-0",
+          )}
+          style={{ height: `${(HEAD_SHARE * 100).toFixed(3)}%` }}
+        >
+          <Image
+            src={person.portrait}
+            alt={`Portrait of ${person.name}`}
+            fill
+            sizes="(min-width: 64rem) 25vw, 50vw"
+            quality={85}
+            className="object-cover"
+            style={{
+              transform: `translate(${frame.x}%, ${frame.y}%) scale(${frame.scale})`,
+            }}
+          />
+          {tail.fade && (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(${turned ? "to bottom" : "to top"}, ${tail.tone}, transparent 12%)`,
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

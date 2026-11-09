@@ -2,12 +2,14 @@ import { describe, expect, test } from "bun:test"
 
 import {
   COMMA,
+  LAND,
   lineFrame,
   mixGeometry,
   offsetFrom,
   openGeometry,
   progressAt,
   rollFrame,
+  scrub,
   TAIL,
   windowBoxes,
   windowGeometry,
@@ -69,9 +71,24 @@ describe("unit: line and roll frames", () => {
     expect(lineFrame(1, 0, 1)).toEqual({ opacity: 0, shift: -1 })
   })
 
-  test("two scenes never show at once halfway", () => {
-    expect(lineFrame(-0.5, 0, 1).opacity).toBe(0)
-    expect(lineFrame(0.5, 0, 1).opacity).toBe(0)
+  test("two scenes never show at once, however many lines", () => {
+    for (const count of [1, 2, 3, 5]) {
+      for (let index = 0; index < count; index++) {
+        for (const offset of [-1, -0.75, -0.5, 0.5, 0.75, 1]) {
+          expect(lineFrame(offset, index, count).opacity).toBe(0)
+        }
+      }
+    }
+  })
+
+  test("a scene's copy is in place before the scroll's slow end", () => {
+    for (let index = 0; index < 3; index++) {
+      expect(lineFrame(-(1 - LAND), index, 3)).toEqual({
+        opacity: 1,
+        shift: 0,
+      })
+    }
+    expect(rollFrame(-(1 - LAND))).toEqual({ opacity: 1, shift: 0 })
   })
 
   test("the first line arrives first and leaves first", () => {
@@ -87,6 +104,22 @@ describe("unit: line and roll frames", () => {
     expect(rollFrame(1)).toEqual({ opacity: 0, shift: -1 })
     expect(rollFrame(-0.9).opacity).toBe(0)
     expect(rollFrame(-0.5).opacity).toBeGreaterThan(0)
+  })
+})
+
+describe("unit: the scrub's pace", () => {
+  test("runs from 0 to 1 and mirrors itself", () => {
+    expect(scrub(0)).toBe(0)
+    expect(scrub(1)).toBe(1)
+    expect(scrub(0.5)).toBe(0.5)
+    expect(scrub(0.2) + scrub(0.8)).toBeCloseTo(1, 10)
+    expect(scrub(-1)).toBe(0)
+    expect(scrub(2)).toBe(1)
+  })
+
+  test("moves with the first pixel, at half speed", () => {
+    expect(scrub(0.01) / 0.01).toBeCloseTo(0.5, 1)
+    expect(scrub(0.99) - scrub(0.98)).toBeCloseTo(0.005, 3)
   })
 })
 
