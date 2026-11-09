@@ -8,20 +8,12 @@ import {
   type Ref,
 } from "react"
 
+import { frameAt, KINKS, type Layout } from "@/components/new/frames"
 import {
-  frameAt,
-  KINKS,
-  type Layout,
-  type Script,
-} from "@/components/new/frames"
-import {
-  CUTS,
   PAINTING_SIZES,
-  PANEL_STATES,
-  PEOPLE,
   RAIL,
   SCENE_COUNT,
-  WINDOW_LAYOUTS,
+  SCRIPT,
 } from "@/components/new/scenes"
 import {
   css,
@@ -43,15 +35,6 @@ const LINE_TRAVEL = 24
 const SMOOTH_REACH = 2
 /** Rebuilds while the window resizes come at most this often, in ms. */
 const REBUILD_EVERY = 120
-
-const SCRIPT: Script = {
-  sceneCount: SCENE_COUNT,
-  states: PANEL_STATES,
-  paintings: PAINTING_SIZES,
-  cuts: CUTS,
-  layouts: WINDOW_LAYOUTS,
-  people: PEOPLE.length,
-}
 
 /** The scroll timeline, where the browser has one (not in lib.dom yet). */
 type ScrollTimelineClass = new (options: {

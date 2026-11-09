@@ -126,7 +126,7 @@ describe("unit: the stage's timeline", () => {
         lineTravel: 24,
         scenes: [{ from: 0, to: 0, lines: 1 }],
         values: null,
-        panel: { size, column, margin: 24 },
+        panel: { size, column, margin: 24, ratio: 2 },
       }
       const exact = (progress: number) => {
         const segment = Math.min(Math.floor(progress), SCENE_COUNT - 1)
@@ -158,6 +158,12 @@ describe("unit: the stage's timeline", () => {
       )
       // WebKit's main thread slows past about 1,800 for the whole page.
       expect(keyframes).toBeLessThan(700)
+      // The title strip changes its words in straight lines, between samples:
+      // a handful of keyframes for each scene's.
+      const strip = [...series]
+        .filter(([key]) => /^(strip|keyplan)/.test(key))
+        .reduce((sum, [, entry]) => sum + simplify(entry).offsets.length, 0)
+      expect(strip).toBeLessThan(120)
 
       const along = (simple: Series, offset: number, key: "x" | "y" | "s") => {
         const { offsets, styles } = simple

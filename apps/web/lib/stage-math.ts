@@ -120,6 +120,82 @@ export function rollFrame(offset: number): { opacity: number; shift: number } {
 
 export type Size = { w: number; h: number }
 export type Point = readonly [number, number]
+export type Rect = { x: number; y: number; w: number; h: number }
+
+/**
+ * The panel's lattice: square modules inside a frame that stands `margin`
+ * from the panel's four edges. The modules divide the frame's width exactly;
+ * what its height leaves under the last row is the strip. Every line is on a
+ * device pixel, and everything that sits on the lattice reads its position
+ * here: the lines as drawn, the pictures' edges, the notes' ends.
+ */
+export type Lattice = {
+  columns: number
+  rows: number
+  /** A module's side, before its lines are rounded to device pixels. */
+  unit: number
+  /** How many modules the square on a detail spans. */
+  span: number
+  /** The vertical lines' x: `columns + 1` of them. */
+  xs: readonly number[]
+  /** The horizontal lines' y: `rows + 1` of them. */
+  ys: readonly number[]
+  /** The frame's bottom edge; the strip lies between the last row and it. */
+  bottom: number
+}
+
+/** The strip is never thinner than this, so it always holds a line of text. */
+export const STRIP_MIN = 20
+
+/**
+ * The lattice of a panel. Of every whole number of columns it takes the one
+ * whose square of whole modules is nearest `size` of the panel's shorter
+ * side, and whose module is nearest 7% of that side (44 to 76 px): the
+ * first counts double. `ratio` is the device's pixels per CSS pixel.
+ */
+export function lattice(
+  panel: Size,
+  margin: number,
+  size: number,
+  ratio = 1,
+): Lattice {
+  const w = Math.max(panel.w - 2 * margin, 1)
+  const h = Math.max(panel.h - 2 * margin, 1)
+  const shorter = Math.min(panel.w, panel.h)
+  const target = clamp(0.07 * shorter, 44, 76)
+  const side = Math.max(Math.min(size * shorter, w, h - STRIP_MIN), 1)
+  let best = { columns: 1, rows: 1, span: 1, loss: Infinity }
+  for (let columns = 4; columns <= 24; columns++) {
+    const unit = w / columns
+    if (unit < 28 || unit > 84) continue
+    const rows = Math.floor((h - STRIP_MIN) / unit + 1e-6)
+    if (rows < 2) continue
+    const span = clamp(Math.round(side / unit), 1, Math.min(columns, rows))
+    const loss =
+      (2 * Math.abs(span * unit - side)) / side +
+      Math.abs(unit - target) / target
+    if (loss < best.loss) best = { columns, rows, span, loss }
+  }
+  const { columns, rows, span } = best
+  const unit = w / columns
+  const snap = (value: number) => Math.round(value * ratio) / ratio
+  return {
+    columns,
+    rows,
+    unit,
+    span,
+    xs: Array.from({ length: columns + 1 }, (_, i) => snap(margin + i * unit)),
+    ys: Array.from({ length: rows + 1 }, (_, j) => snap(margin + j * unit)),
+    bottom: snap(Math.max(panel.h - margin, margin + rows * unit)),
+  }
+}
+
+/** The lattice's own rectangle: every module, without the strip. */
+export function latticeRect(lat: Lattice): Rect {
+  const x = lat.xs[0]!
+  const y = lat.ys[0]!
+  return { x, y, w: lat.xs[lat.columns]! - x, h: lat.ys[lat.rows]! - y }
+}
 
 /** A view of a painting through the square window: what it shows. */
 export type Window = {
@@ -129,21 +205,26 @@ export type Window = {
   span: number
 }
 
-/** How a panel shape places the square. */
+/** How a panel shape places the pictures. */
 export type WindowLayout = {
   /** The square's side, as a share of the panel's shorter side. */
   size: number
   /**
-   * Where a cropped painting sits vertically, 0 top to 1 bottom: covering
-   * the panel when open, fitted inside it when the square is placed.
+   * Where a whole painting sits vertically when the lattice crops it, 0 top
+   * to 1 bottom.
    */
   anchorY: number
+  /**
+   * Where the painting fitted inside the panel sits vertically, 0 top to 1
+   * bottom: the square on a detail is placed where the detail falls in it.
+   */
+  fitY: number
 }
 
 /**
- * Where a painting and the window are: the painting drawn at `scale` with its
- * top-left at (`x`, `y`); the square `side` wide, centred on (`cx`, `cy`),
- * over the painting's point `focus`.
+ * Where a painting and the picture are: the painting drawn at `scale` with
+ * its top-left at (`x`, `y`); the picture the rectangle `w` by `h` centred on
+ * (`cx`, `cy`), over the painting's point `focus`.
  */
 export type Geometry = {
   x: number
@@ -151,96 +232,95 @@ export type Geometry = {
   scale: number
   cx: number
   cy: number
-  side: number
+  w: number
+  h: number
   focus: Point
 }
 
-/** The scale at which the painting covers the panel, as `object-fit: cover`. */
-function coverScale(panel: Size, image: Size) {
-  return Math.max(panel.w / image.w, panel.h / image.h)
-}
-
-/**
- * Half the side of a square centred on (`cx`, `cy`) that just covers the
- * panel, with a twentieth to spare.
- */
-export function coverReach(panel: Size, cx: number, cy: number) {
-  return Math.max(cx, panel.w - cx, cy, panel.h - cy, 1) * 1.05
-}
-
-/**
- * The whole painting, covering the panel, with the square opened round
- * `focus` until it is larger than the panel: the start of a zoom on `focus`.
- */
+/** The whole painting: it covers the lattice, which crops it. */
 export function openGeometry(
-  panel: Size,
   image: Size,
-  focus: Point,
   layout: WindowLayout,
+  lat: Lattice,
 ): Geometry {
-  const scale = coverScale(panel, image)
-  const x = (panel.w - image.w * scale) / 2
-  const y = (panel.h - image.h * scale) * layout.anchorY
-  const cx = x + focus[0] * scale
-  const cy = y + focus[1] * scale
-  return { x, y, scale, cx, cy, side: coverReach(panel, cx, cy) * 2, focus }
+  const rect = latticeRect(lat)
+  const scale = Math.max(rect.w / image.w, rect.h / image.h)
+  const x = rect.x + (rect.w - image.w * scale) / 2
+  const y = rect.y + (rect.h - image.h * scale) * layout.anchorY
+  const cx = rect.x + rect.w / 2
+  const cy = rect.y + rect.h / 2
+  return {
+    x,
+    y,
+    scale,
+    cx,
+    cy,
+    w: rect.w,
+    h: rect.h,
+    focus: [(cx - x) / scale, (cy - y) / scale],
+  }
 }
 
 /**
- * The square closed down on a detail: `size` of the panel's shorter side,
- * clamped `margin` pixels inside the panel; placed where the detail sits in
- * the whole painting fitted inside the panel, so the square travels across
- * the panel as the details do across the painting; the painting magnified so
- * the square spans `span` of its pixels. Near the painting's edge the detail
- * moves in, so the square never shows past it.
+ * The square on a detail: `span` modules of the lattice a side, its corner
+ * on the lattice point nearest where the detail falls in the whole painting
+ * fitted inside the panel, so the square travels across the lattice as the
+ * details do across the painting; the painting magnified so the square
+ * spans `span` of its pixels. Near the painting's edge the detail moves in,
+ * by half the span and one screen pixel more (the lattice's lines are
+ * rounded to device pixels, the zoom is not), so the square never shows
+ * past it.
  */
 export function windowGeometry(
   panel: Size,
   image: Size,
   window: Window,
   layout: WindowLayout,
-  margin: number,
+  lat: Lattice,
 ): Geometry {
-  const side = Math.min(
-    layout.size * Math.min(panel.w, panel.h),
-    panel.h - 2 * margin,
-    panel.w - 2 * margin,
-  )
+  const side = lat.span * lat.unit
   const scale = side / window.span
-  const half = window.span / 2
+  const half = window.span / 2 + 1 / scale
   const focus: Point = [
     clamp(window.focus[0], half, image.w - half),
     clamp(window.focus[1], half, image.h - half),
   ]
   const fit = Math.min(panel.w / image.w, panel.h / image.h)
-  const left = (panel.w - image.w * fit) / 2
-  const top = (panel.h - image.h * fit) * layout.anchorY
-  const cx = clamp(
-    left + focus[0] * fit,
-    margin + side / 2,
-    panel.w - margin - side / 2,
+  const left = (panel.w - image.w * fit) / 2 + focus[0] * fit - side / 2
+  const top = (panel.h - image.h * fit) * layout.fitY + focus[1] * fit - side / 2
+  const column = clamp(
+    Math.round((left - lat.xs[0]!) / lat.unit),
+    0,
+    lat.columns - lat.span,
   )
-  const cy = clamp(
-    top + focus[1] * fit,
-    margin + side / 2,
-    panel.h - margin - side / 2,
+  const row = clamp(
+    Math.round((top - lat.ys[0]!) / lat.unit),
+    0,
+    lat.rows - lat.span,
   )
+  const x0 = lat.xs[column]!
+  const x1 = lat.xs[column + lat.span]!
+  const y0 = lat.ys[row]!
+  const y1 = lat.ys[row + lat.span]!
+  const cx = (x0 + x1) / 2
+  const cy = (y0 + y1) / 2
   return {
     x: cx - focus[0] * scale,
     y: cy - focus[1] * scale,
     scale,
     cx,
     cy,
-    side,
+    w: x1 - x0,
+    h: y1 - y0,
     focus,
   }
 }
 
 /**
- * Between two geometries of one painting: the detail and the square's centre
- * glide; the side and the zoom change on a log scale. Both ends put the
- * detail at the square's centre, so the painting is placed from the
- * interpolated detail and the square keeps it centred.
+ * Between two geometries of one painting: the detail and the picture's
+ * centre and sides glide, so each of its edges moves in a straight line; the
+ * zoom changes on a log scale. Both ends put the detail at the picture's
+ * centre, so the painting is placed from the interpolated detail.
  */
 export function mixGeometry(a: Geometry, b: Geometry, t: number): Geometry {
   const focus: Point = [
@@ -256,7 +336,8 @@ export function mixGeometry(a: Geometry, b: Geometry, t: number): Geometry {
     scale,
     cx,
     cy,
-    side: lerpLog(a.side, b.side, t),
+    w: lerp(a.w, b.w, t),
+    h: lerp(a.h, b.h, t),
     focus,
   }
 }
@@ -266,8 +347,8 @@ export type Placement = { x: number; y: number; scale: number }
 
 /**
  * The painting of `g` scaled `k` times about its own point `anchor`, which
- * stays where it is on the panel. A painting that covers the panel still
- * covers it for any `k` of 1 or more, since the anchor is inside it.
+ * stays where it is on the panel. A painting that covers its picture still
+ * covers it for any `k` of 1 or more, when the anchor is inside it.
  */
 export function pushed(g: Geometry, anchor: Point, k: number): Placement {
   const px = g.x + anchor[0] * g.scale

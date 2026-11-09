@@ -1,7 +1,7 @@
 import type { Cut, PaintingKey, PanelState } from "@/components/new/scenes"
+import { sheetPlan, type SheetPlan } from "@/components/new/sheet"
 import {
   clamp,
-  coverReach,
   lerp,
   lineFrame,
   mixGeometry,
@@ -12,8 +12,8 @@ import {
   scrub,
   windowGeometry,
   type Geometry,
+  type Lattice,
   type Placement,
-  type Point,
   type Size,
   type WindowLayout,
 } from "@/lib/stage-math"
@@ -43,15 +43,19 @@ export type Style = {
  * - `line:<scene>:<n>` a scene's line; `step:<n>` a value statement;
  *   `mark:<n>` an index number; `highlight` the square behind it, and
  *   `tint:<n>` its colour for value n.
- * - `panel` the image panel; `painting:<key>` each painting;
- *   `shutter:<side>` the four white shutters that frame the square;
+ * - `panel` the pictures in the image panel; `painting:<key>` each painting;
+ *   `shutter:<side>` the four white shutters that frame the picture, and
+ *   `rule:<side>` its four edges continued across the lattice;
  *   `half:<n>` a person's white half and `comma:<n>` their photograph.
+ * - `strip:<scene>` a scene's words in the title strip; `keyplan` the key
+ *   plan beside them and `keyplan:window` the square on it.
  */
 export type Frame = Record<string, Style>
 
 /**
- * The four white shutters round the square, each the panel's size and a
- * pixel more on every side, so no edge of the panel ever shows between them.
+ * The four white shutters round the picture, each the panel's size and a
+ * pixel more on every side, so no edge of the panel ever shows between them;
+ * and the four rules, one along each of the picture's edges.
  */
 export const SHUTTERS = ["top", "right", "bottom", "left"] as const
 
@@ -99,8 +103,45 @@ export type Layout = {
     /** Each index number's left edge. */
     markX: readonly number[]
   } | null
-  panel: { size: Size; column: boolean; margin: number } | null
+  panel: {
+    size: Size
+    column: boolean
+    /** The frame's distance from the panel's edges. */
+    margin: number
+    /** The device's pixels per CSS pixel: the lattice's lines sit on them. */
+    ratio: number
+  } | null
 }
+
+type Panel = NonNullable<Layout["panel"]>
+
+const sheets = new WeakMap<Panel, SheetPlan>()
+
+/** A measured panel's sheet (`sheet.ts`), worked out once. */
+export function sheetOf(script: Script, panel: Panel): SheetPlan {
+  let sheet = sheets.get(panel)
+  if (!sheet) {
+    sheet = sheetPlan(panel, script)
+    sheets.set(panel, sheet)
+  }
+  return sheet
+}
+
+/** A measured panel's lattice. */
+export function latticeOf(script: Script, panel: Panel): Lattice {
+  return sheetOf(script, panel).lattice
+}
+
+/**
+ * Where in a transition the title strip changes its words: the old ones go
+ * just before halfway and the new ones come just after, each on samples of
+ * the timeline, so the two are never read at once.
+ */
+const WORDS_OUT = [11 / 32, 16 / 32] as const
+const WORDS_IN = [16 / 32, 21 / 32] as const
+/** From 0 to 1 between two points, in a straight line. */
+const ramp = (from: number, to: number, x: number) =>
+  clamp((x - from) / (to - from), 0, 1)
 
 /**
  * The frame `t` of the way (0 to 1) from scene `segment` to the next. The
@@ -180,16 +221,17 @@ function valuesFrame(
 }
 
 /**
- * The image panel: a painting whole, or seen through the logo's square on
- * white, and the two portraits. Each painting has one transform and an
- * opacity; four white shutters slide to frame the square. Nothing is clipped
- * or rescaled but the paintings themselves, and a painting never shows its
- * edge: while visible it covers the panel, or the square it is seen through.
+ * The image panel: a painting whole, cropped by the lattice, or seen through
+ * the logo's square on white, and the two portraits. Each painting has one
+ * transform and an opacity; four white shutters slide to frame the picture,
+ * whose edges always rest on lines of the lattice. Nothing is clipped or
+ * rescaled but the paintings themselves, and a painting never shows its
+ * edge: while visible it covers the picture it is seen through.
  */
 function panelFrame(
   frame: Frame,
   script: Script,
-  panel: NonNullable<Layout["panel"]>,
+  panel: Panel,
   segment: number,
   t: number,
   reduced: boolean,
@@ -229,40 +271,21 @@ function panelFrame(
       : (script.cuts.find(
           ({ from, to }) => from === a.painting && to === b.painting,
         ) ?? null)
-  /** A state's geometry, beside the state it moves to or from. */
-  const view = (state: PanelState, other: PanelState, end: "out" | "in") => {
+  const lat = latticeOf(script, panel)
+  /** A state's geometry: the square on its detail, or the whole painting. */
+  const view = (state: PanelState) => {
     const image = paintings[state.painting]
-    if (state.window) {
-      return windowGeometry(
-        panel.size,
-        image,
-        state.window,
-        layout,
-        panel.margin,
-      )
-    }
-    // Open, the square is centred on the point the camera moves about: the
-    // detail it closes on, the anchor of a cut, or the middle.
-    let focus: Point = [image.w / 2, image.h / 2]
-    const side = cut?.[end]
-    if (other.painting === state.painting && other.window) {
-      focus = other.window.focus
-    } else if (side && side !== "square") {
-      focus = side.anchor
-    }
-    return openGeometry(panel.size, image, focus, layout)
+    return state.window
+      ? windowGeometry(panel.size, image, state.window, layout, lat)
+      : openGeometry(image, layout, lat)
   }
-  const from = view(a, b, "out")
-  const to = view(b, a, "in")
+  const from = view(a)
+  const to = view(b)
   /** Where a painting next shows at rest, from the next scene on. */
   const home = (key: PaintingKey): Placement => {
     for (let ahead = 1; ahead <= sceneCount; ahead++) {
       const state = states[(index + ahead) % sceneCount]!
-      if (state.painting !== key) continue
-      const image = paintings[key]
-      return state.window
-        ? windowGeometry(panel.size, image, state.window, layout, panel.margin)
-        : openGeometry(panel.size, image, [image.w / 2, image.h / 2], layout)
+      if (state.painting === key) return view(state)
     }
     return { x: 0, y: 0, scale: 1 }
   }
@@ -276,7 +299,7 @@ function panelFrame(
   const rest = (key: PaintingKey) =>
     keys.map((other, order) => (other === key || order === 0 ? 1 : GHOST))
 
-  let square: Pick<Geometry, "cx" | "cy" | "side">
+  let picture: Picture
   // Each painting's placement and opacity; a painting not on show waits,
   // still, where it next shows.
   const at = new Map<PaintingKey, Placement>(
@@ -285,31 +308,18 @@ function panelFrame(
   let alphas: number[] = [...rest(a.painting)]
   if (a.painting === b.painting) {
     const g = mixGeometry(from, to, e)
-    square = g
+    picture = g
     at.set(a.painting, g)
   } else if (cut) {
-    /** The square `u` of the way through the cut. */
-    const squareAt = (u: number) => {
-      const g = mixGeometry(from, to, u)
-      // Between two whole paintings, the square stays larger than the panel.
-      const side =
-        a.window || b.window
-          ? g.side
-          : Math.max(g.side, coverReach(panel.size, g.cx, g.cy) * 2)
-      return { cx: g.cx, cy: g.cy, side }
-    }
-    square = squareAt(e)
+    /** The picture `u` of the way through the cut. */
+    const pictureAt = (u: number): Picture => mixGeometry(from, to, u)
+    picture = pictureAt(e)
     at.set(a.painting, pushed(from, cut.out.anchor, Math.pow(cut.out.push, e)))
     let [start, end] = cut.fade
     if (cut.in === "square") {
       // The detail waits where it lands and dissolves in once the closing
-      // square sits inside it.
-      const inside = coveredFrom(
-        to,
-        paintings[b.painting],
-        panel.size,
-        squareAt,
-      )
+      // picture sits inside it.
+      const inside = coveredFrom(to, paintings[b.painting], pictureAt)
       start = Math.max(start, inside)
       end = Math.min(1, Math.max(end, start + 0.1))
     }
@@ -336,8 +346,7 @@ function panelFrame(
     // Under the portraits: the change happens while nothing shows it, and
     // gradually, as everything else here does. WebKit stalls when many large
     // layers change at once.
-    const g = mixGeometry(from, to, e)
-    square = g
+    picture = mixGeometry(from, to, e)
     const outgoing = home(a.painting)
     at.set(a.painting, {
       x: lerp(from.x, outgoing.x, e),
@@ -349,17 +358,21 @@ function panelFrame(
     alphas = alphas.map((value, order) => lerp(value, after[order]!, e))
   }
 
-  // The shutters frame the square, and only ever slide; past the panel's
-  // edges they are simply out of sight.
+  // The shutters frame the picture, and only ever slide; each rule lies
+  // along one of its edges, across the lattice.
   const { w, h } = panel.size
-  const left = square.cx - square.side / 2
-  const right = square.cx + square.side / 2
-  const top = square.cy - square.side / 2
-  const bottom = square.cy + square.side / 2
+  const left = picture.cx - picture.w / 2
+  const right = picture.cx + picture.w / 2
+  const top = picture.cy - picture.h / 2
+  const bottom = picture.cy + picture.h / 2
   frame["shutter:top"] = { x: 0, y: top - h - 1, s: 1 }
   frame["shutter:right"] = { x: right + 1, y: 0, s: 1 }
   frame["shutter:bottom"] = { x: 0, y: bottom + 1, s: 1 }
   frame["shutter:left"] = { x: left - w - 1, y: 0, s: 1 }
+  frame["rule:top"] = { x: 0, y: top, s: 1 }
+  frame["rule:right"] = { x: right, y: 0, s: 1 }
+  frame["rule:bottom"] = { x: 0, y: bottom, s: 1 }
+  frame["rule:left"] = { x: left, y: 0, s: 1 }
   keys.forEach((key, order) => {
     const placement = at.get(key)!
     frame[`painting:${key}`] = {
@@ -375,28 +388,65 @@ function panelFrame(
     frame[`comma:${person}`] = { opacity: photographs }
   }
   frame.panel = { opacity }
+
+  // The title strip: this scene's words, then the next one's.
+  const going = 1 - ramp(WORDS_OUT[0], WORDS_OUT[1], t)
+  const coming = ramp(WORDS_IN[0], WORDS_IN[1], t)
+  for (let scene = 0; scene < sceneCount; scene++) {
+    frame[`strip:${scene}`] = {
+      opacity: scene === index ? going : scene === next ? coming : 0,
+    }
+  }
+  // The key plan, while the squares are on its painting: its square glides
+  // from one detail to the next as the picture does, and waits on the
+  // nearest detail while the plan is away.
+  const { keyplan } = sheetOf(script, panel).strip
+  if (keyplan) {
+    const squares = keyplan.windows
+    const near = (scene: number) => {
+      for (let back = scene; back >= 0; back--) {
+        const square = squares[back]
+        if (square) return square
+      }
+      return squares.find((square) => square)!
+    }
+    const here = squares[index]
+    const there = squares[next]
+    const start = near(index)
+    const end = near(next)
+    frame.keyplan = {
+      opacity: here && there ? 1 : here ? going : there ? coming : 0,
+    }
+    frame["keyplan:window"] = {
+      x: lerp(start.x, end.x, e) - keyplan.cell.x,
+      y: lerp(start.y, end.y, e) - keyplan.cell.y,
+      s: lerp(start.w, end.w, e) / near(0).w,
+    }
+  }
 }
 
+/** The picture the shutters frame: a rectangle, by its centre. */
+type Picture = Pick<Geometry, "cx" | "cy" | "w" | "h">
+
 /**
- * From how far through a cut a painting placed at `at` covers what the
- * square shows of the panel, to the end: 1 if only at the end.
+ * From how far through a cut a painting placed at `at` covers the picture,
+ * to the end: 1 if only at the end.
  */
 function coveredFrom(
   at: Placement,
   image: Size,
-  panel: Size,
-  squareAt: (u: number) => Pick<Geometry, "cx" | "cy" | "side">,
+  pictureAt: (u: number) => Picture,
 ) {
   const e = 0.01
   let from = 1
   for (let n = 64; n >= 0; n--) {
     const u = n / 64
-    const { cx, cy, side } = squareAt(u)
+    const { cx, cy, w, h } = pictureAt(u)
     const covered =
-      at.x <= Math.max(0, cx - side / 2) + e &&
-      at.y <= Math.max(0, cy - side / 2) + e &&
-      at.x + image.w * at.scale >= Math.min(panel.w, cx + side / 2) - e &&
-      at.y + image.h * at.scale >= Math.min(panel.h, cy + side / 2) - e
+      at.x <= cx - w / 2 + e &&
+      at.y <= cy - h / 2 + e &&
+      at.x + image.w * at.scale >= cx + w / 2 - e &&
+      at.y + image.h * at.scale >= cy + h / 2 - e
     if (!covered) break
     from = u
   }

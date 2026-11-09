@@ -5,6 +5,7 @@ import keir from "@/assets/new/keir.webp"
 import meeting from "@/assets/new/meeting.webp"
 import sadie from "@/assets/new/sadie.webp"
 import studio from "@/assets/new/studio.webp"
+import type { Script } from "@/components/new/frames"
 import type { Point, Window, WindowLayout } from "@/lib/stage-math"
 
 /**
@@ -224,12 +225,13 @@ export const CUTS: readonly Cut[] = [
 
 /**
  * The panel's two shapes. `column` is the panel beside the copy; `band` is
- * the strip across a phone. The square is a share of the shorter side, kept
- * inside the panel's inset, `--inset`.
+ * the strip across a phone. The square is a share of the shorter side, in
+ * whole modules of the panel's lattice. Beside the copy a whole painting is
+ * cropped low, so the sun stays in the picture.
  */
 export const WINDOW_LAYOUTS = {
-  column: { size: 0.64, anchorY: 0.5 },
-  band: { size: 0.8, anchorY: 0.36 },
+  column: { size: 0.64, anchorY: 0.3, fitY: 0.5 },
+  band: { size: 0.8, anchorY: 0.36, fitY: 0.36 },
 } as const satisfies Record<string, WindowLayout>
 
 export type Person = {
@@ -290,3 +292,13 @@ export const RAIL: readonly { label: string; colour: string }[] = [
   { label: "The people", colour: BLACK },
   { label: "Join the founding cohort", colour: BLACK },
 ]
+
+/** What the stage plays: the same for every visitor (see `frames.ts`). */
+export const SCRIPT: Script = {
+  sceneCount: SCENE_COUNT,
+  states: PANEL_STATES,
+  paintings: PAINTING_SIZES,
+  cuts: CUTS,
+  layouts: WINDOW_LAYOUTS,
+  people: PEOPLE.length,
+}

@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 
-import { frameAt, GHOST, type Frame, type Layout, type Script } from "./frames"
+import {
+  frameAt,
+  GHOST,
+  latticeOf,
+  sheetOf,
+  type Frame,
+  type Layout,
+  type Script,
+} from "./frames"
 import {
   CUTS,
   PAINTING_SIZES,
@@ -35,11 +43,11 @@ const SCENES = [
  * side, an iPhone 15's band and a short phone's.
  */
 const PANELS = [
-  { size: { w: 848, h: 905 }, column: true, margin: 32 },
-  { size: { w: 1248, h: 1376 }, column: true, margin: 48 },
-  { size: { w: 480, h: 736 }, column: true, margin: 16 },
-  { size: { w: 393, h: 243 }, column: false, margin: 24 },
-  { size: { w: 375, h: 251 }, column: false, margin: 24 },
+  { size: { w: 848, h: 905 }, column: true, margin: 32, ratio: 2 },
+  { size: { w: 1248, h: 1376 }, column: true, margin: 48, ratio: 2 },
+  { size: { w: 480, h: 736 }, column: true, margin: 16, ratio: 1 },
+  { size: { w: 393, h: 392 }, column: false, margin: 24, ratio: 3 },
+  { size: { w: 375, h: 251 }, column: false, margin: 24, ratio: 2 },
 ] as const
 
 function layout(reduced = false, panel: Layout["panel"] = PANELS[0]): Layout {
@@ -71,7 +79,7 @@ function placed(frame: Frame, key: PaintingKey) {
   return [painting.x!, painting.y!, painting.s!]
 }
 
-/** The square the shutters leave open, on a panel `w` by `h`. */
+/** The rectangle the shutters leave open, on a panel `w` by `h`. */
 function square(frame: Frame, { w, h }: { w: number; h: number }) {
   return {
     left: frame["shutter:left"]!.x! + w + 1,
@@ -263,19 +271,20 @@ describe("unit: the stage's frames", () => {
     }
   })
 
-  test("from the meeting to the badge, the badge fades in while both move in", () => {
+  test("from the meeting to the badge, the badge fades in over the meeting", () => {
+    const lat = latticeOf(SCRIPT, PANELS[0])
     let last = 0
     for (let n = 0; n <= 40; n++) {
       const frame = at(n / 40)
       const badge = frame["painting:badge"]!.opacity!
       expect(badge).toBeGreaterThanOrEqual(last)
       last = badge
-      // Both whole: the shutters stay out of the panel.
-      const open = square(frame, { w: 848, h: 905 })
-      expect(open.left).toBeLessThanOrEqual(0)
-      expect(open.top).toBeLessThanOrEqual(0)
-      expect(open.right).toBeGreaterThanOrEqual(848)
-      expect(open.bottom).toBeGreaterThanOrEqual(905)
+      // Both whole: the picture stays the lattice, from line to line.
+      const open = square(frame, PANELS[0].size)
+      expect(open.left).toBeCloseTo(lat.xs[0]!, 9)
+      expect(open.top).toBeCloseTo(lat.ys[0]!, 9)
+      expect(open.right).toBeCloseTo(lat.xs[lat.columns]!, 9)
+      expect(open.bottom).toBeCloseTo(lat.ys[lat.rows]!, 9)
     }
     // Halfway, both show, each whole and still: a dissolve.
     const middle = at(0.5)
@@ -286,9 +295,9 @@ describe("unit: the stage's frames", () => {
   })
 
   test("from the badge to the first value, white closes in and the detail dissolves in", () => {
-    const size = { w: 848, h: 905 }
+    const lat = latticeOf(SCRIPT, PANELS[0])
     const side = (frame: Frame) => {
-      const open = square(frame, size)
+      const open = square(frame, PANELS[0].size)
       return open.right - open.left
     }
     let last = Infinity
@@ -302,7 +311,49 @@ describe("unit: the stage's frames", () => {
       if (frame["painting:studio"]!.opacity! > 0) seen = true
     }
     expect(seen).toBe(true)
-    expect(side(at(2))).toBeCloseTo(0.64 * 848)
+    // Nine modules of the laptop's lattice: what two thirds of it comes to.
+    expect(lat.span).toBe(9)
+    expect(side(at(2))).toBeCloseTo(lat.xs[lat.span]! - lat.xs[0]!, 9)
+  })
+
+  test("at rest, every edge of the picture is a line of the lattice", () => {
+    for (const panel of PANELS) {
+      const lat = latticeOf(SCRIPT, panel)
+      for (let scene = 0; scene <= SCENE_COUNT; scene++) {
+        const open = square(at(scene, layout(false, panel)), panel.size)
+        const column = lat.xs.indexOf(open.left)
+        const row = lat.ys.indexOf(open.top)
+        expect(column).toBeGreaterThanOrEqual(0)
+        expect(row).toBeGreaterThanOrEqual(0)
+        const detail = PANEL_STATES[scene % SCENE_COUNT]!.window
+        // A detail: a square of whole modules. A whole painting: the lattice.
+        const across = detail ? lat.span : lat.columns
+        const down = detail ? lat.span : lat.rows
+        if (!detail) expect([column, row]).toEqual([0, 0])
+        expect(open.right).toBe(lat.xs[column + across]!)
+        expect(open.bottom).toBe(lat.ys[row + down]!)
+      }
+    }
+  })
+
+  test("the rules lie on the picture's four edges, always", () => {
+    for (const panel of PANELS) {
+      for (const progress of POSITIONS) {
+        const frame = at(progress, layout(false, panel))
+        const open = square(frame, panel.size)
+        // A rule moves along one axis only, and never scales.
+        for (const side of ["left", "right"] as const) {
+          const rule = frame[`rule:${side}`]!
+          expect(rule.x).toBeCloseTo(open[side], 9)
+          expect([rule.y, rule.s]).toEqual([0, 1])
+        }
+        for (const side of ["top", "bottom"] as const) {
+          const rule = frame[`rule:${side}`]!
+          expect(rule.y).toBeCloseTo(open[side], 9)
+          expect([rule.x, rule.s]).toEqual([0, 1])
+        }
+      }
+    }
   })
 
   test("the portraits show only around the people scene, colours before faces", () => {
@@ -347,7 +398,7 @@ describe("unit: the stage's frames", () => {
       SCRIPT,
       {
         ...layout(),
-        panel: { size: { w: 390, h: 0 }, column: false, margin: 24 },
+        panel: { size: { w: 390, h: 0 }, column: false, margin: 24, ratio: 3 },
       },
       3,
       0.5,
@@ -365,6 +416,71 @@ describe("unit: the stage's frames", () => {
           }
         }
       }
+    }
+  })
+})
+
+describe("unit: the title strip's frames", () => {
+  const strips = (frame: Frame) =>
+    Array.from(
+      { length: SCENE_COUNT },
+      (_, scene) => frame[`strip:${scene}`]!.opacity!,
+    )
+
+  test("at rest, the strip carries the scene's words and no other", () => {
+    for (let scene = 0; scene < SCENE_COUNT; scene++) {
+      expect(strips(at(scene))).toEqual(
+        Array.from({ length: SCENE_COUNT }, (_, n) => (n === scene ? 1 : 0)),
+      )
+    }
+  })
+
+  test("two scenes' words never show at once, moving or cut", () => {
+    for (const reduced of [false, true]) {
+      for (const progress of POSITIONS) {
+        const showing = strips(at(progress, layout(reduced)))
+        expect(showing.filter((opacity) => opacity > 0).length).toBeLessThan(2)
+      }
+    }
+  })
+
+  test("the key plan shows on the studio, its square on the detail in view", () => {
+    for (const panel of PANELS) {
+      const { keyplan } = sheetOf(SCRIPT, panel).strip
+      const measured = layout(false, panel)
+      if (!keyplan) {
+        expect(at(3, measured).keyplan).toBeUndefined()
+        expect(at(3, measured)["keyplan:window"]).toBeUndefined()
+        continue
+      }
+      for (let scene = 0; scene < SCENE_COUNT; scene++) {
+        const frame = at(scene, measured)
+        const square = keyplan.windows[scene]
+        expect(frame.keyplan).toEqual({ opacity: square ? 1 : 0 })
+        if (!square) continue
+        expect(frame["keyplan:window"]).toEqual({
+          x: square.x - keyplan.cell.x,
+          y: square.y - keyplan.cell.y,
+          s: 1,
+        })
+      }
+    }
+    // The laptop and the phone have one; the short phone's strip is too thin.
+    expect(sheetOf(SCRIPT, PANELS[0]).strip.keyplan).not.toBeNull()
+    expect(sheetOf(SCRIPT, PANELS[3]).strip.keyplan).not.toBeNull()
+    expect(sheetOf(SCRIPT, PANELS[4]).strip.keyplan).toBeNull()
+  })
+
+  test("the square never jumps while the key plan shows", () => {
+    let last: Frame | null = null
+    for (const progress of POSITIONS) {
+      const frame = at(progress)
+      if (last && last.keyplan!.opacity! > 0 && frame.keyplan!.opacity! > 0) {
+        const a = last["keyplan:window"]!
+        const b = frame["keyplan:window"]!
+        expect(Math.hypot(b.x! - a.x!, b.y! - a.y!)).toBeLessThan(3)
+      }
+      last = frame
     }
   })
 })
