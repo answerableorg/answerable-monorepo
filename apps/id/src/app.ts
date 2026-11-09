@@ -12,6 +12,10 @@ import type { Auth } from "./auth.ts";
 import type { Database } from "./db/client.ts";
 import type { Environment } from "./env.ts";
 import { createAdminApp } from "./http/admin/index.ts";
+import {
+  createClientOrigins,
+  type ClientOrigins,
+} from "./http/client-origins.ts";
 import { adminSecuritySchemes, adminTags } from "./http/admin/openapi.ts";
 import { isAllowedAuthRoute } from "./http/auth-allowlist.ts";
 import type { AppEnvironment } from "./http/context.ts";
@@ -42,6 +46,8 @@ export type AppServices = {
   magicLinks: Pick<MagicLinkRequests, "request" | "connectDirectory">;
   /** How a domain's proof is looked up: the system's resolver unless a test brings its own. */
   txtResolver?: TxtResolver;
+  /** The web origins of public clients, for the token endpoint's CORS: the client records unless a test brings its own. */
+  clientOrigins?: ClientOrigins;
 };
 
 export function createApp(services: AppServices) {
@@ -86,11 +92,30 @@ export function createApp(services: AppServices) {
 
   // Better Auth's browser calls keep the configured, credentialed origin policy.
   // The admin API sends no CORS headers; its principal still checks a cookie
-  // caller's Origin.
-  app.use(
-    "/auth/*",
-    cors({ origin: services.environment.trustedOrigins, credentials: true }),
-  );
+  // caller's Origin. A public client's browser app may call the token
+  // endpoint from its redirect origin, without credentials.
+  const trustedCors = cors({
+    origin: services.environment.trustedOrigins,
+    credentials: true,
+  });
+  const clientOrigins =
+    services.clientOrigins ?? createClientOrigins(services.db);
+  app.use("/auth/*", async (context, next) => {
+    const origin = context.req.header("origin");
+    if (
+      origin &&
+      context.req.path === "/auth/oauth2/token" &&
+      (context.req.method === "POST" || context.req.method === "OPTIONS") &&
+      !services.environment.trustedOrigins.includes(origin) &&
+      (await clientOrigins.allowed(origin))
+    )
+      return cors({
+        origin,
+        allowMethods: ["POST"],
+        allowHeaders: ["Content-Type"],
+      })(context, next);
+    return trustedCors(context, next);
+  });
 
   app.route("/api/admin/v1", createAdminApp(services));
   app.route("/", createPagesApp());
