@@ -11,7 +11,10 @@ const confidentialOrigin = "https://confidential.example";
 let fixture: AdminFixture;
 
 beforeEach(async () => {
-  fixture = await createAdminFixture();
+  fixture = await createAdminFixture(
+    {},
+    { originChecks: true, restrictedRole: true },
+  );
   await fixture.db.insert(oauthClients).values([
     {
       id: createId(),
@@ -86,10 +89,77 @@ test("a preflight from that origin is allowed for POST with Content-Type", async
   expect(response.headers.get("access-control-allow-credentials")).toBeNull();
 });
 
-test("the loopback redirect origin of a public client is allowed too", async () => {
-  const response = await token("http://127.0.0.1:47811");
-  expect(response.headers.get("access-control-allow-origin")).toBe(
-    "http://127.0.0.1:47811",
+test("only https redirect origins are allowed: not a loopback or other http origin", async () => {
+  for (const origin of ["http://127.0.0.1:47811", "http://cloud.example"]) {
+    const response = await token(origin);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  }
+});
+
+test("a request from a client origin that carries the ID session cookie is refused, with no credentials header", async () => {
+  const response = await fixture.app.request("/auth/oauth2/token", {
+    method: "POST",
+    headers: {
+      origin: webOrigin,
+      cookie: "better-auth.session_token=anything",
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: "x",
+      client_id: "cloud-web-test",
+    }),
+  });
+  expect(response.status).toBe(403);
+  expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+});
+
+test("concurrent requests on a cold or expired cache make one database read", async () => {
+  let now = 0;
+  let loads = 0;
+  const origins = createClientOrigins(fixture.appDb, {
+    now: () => now,
+    load: async () => {
+      loads++;
+      await new Promise((r) => setTimeout(r, 10));
+      return new Set([webOrigin]);
+    },
+  });
+  await Promise.all(
+    Array.from({ length: 20 }, () => origins.allowed(webOrigin)),
+  );
+  expect(loads).toBe(1);
+  now += 60_001;
+  await Promise.all(
+    Array.from({ length: 20 }, () => origins.allowed(webOrigin)),
+  );
+  expect(loads).toBe(2);
+});
+
+test("a database failure allows no origin, is reported, and is retried after a pause, not on every request", async () => {
+  let now = 0;
+  let loads = 0;
+  const errors: unknown[] = [];
+  const origins = createClientOrigins(fixture.appDb, {
+    now: () => now,
+    onError: (error) => errors.push(error),
+    load: async () => {
+      loads++;
+      if (loads === 1) throw new Error("database unavailable");
+      return new Set([webOrigin]);
+    },
+  });
+  expect(await origins.allowed(webOrigin)).toBe(false);
+  expect(await origins.allowed(webOrigin)).toBe(false);
+  expect(loads).toBe(1);
+  expect(errors).toHaveLength(1);
+  now += 5_001;
+  expect(await origins.allowed(webOrigin)).toBe(true);
+});
+
+test("the runtime role reads the public clients' origins under the protocol scope", async () => {
+  expect(await createClientOrigins(fixture.appDb).allowed(webOrigin)).toBe(
+    true,
   );
 });
 
