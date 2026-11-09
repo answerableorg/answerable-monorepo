@@ -15,7 +15,8 @@ import {
   type Script,
 } from "@/components/new/frames"
 import {
-  HERO,
+  CUTS,
+  PAINTING_SIZES,
   PANEL_STATES,
   PEOPLE,
   RAIL,
@@ -25,6 +26,7 @@ import {
 import {
   css,
   keyframes,
+  paintingTolerance,
   sample,
   simplify,
   STEPS,
@@ -45,7 +47,8 @@ const REBUILD_EVERY = 120
 const SCRIPT: Script = {
   sceneCount: SCENE_COUNT,
   states: PANEL_STATES,
-  image: HERO.size,
+  paintings: PAINTING_SIZES,
+  cuts: CUTS,
   layouts: WINDOW_LAYOUTS,
   people: PEOPLE.length,
 }
@@ -250,8 +253,12 @@ export function Stage({
       for (const [key, entry] of series) {
         const element = targets.get(key)
         if (!element) continue
+        const painting = key.startsWith("painting:")
+          ? PAINTING_SIZES[key.slice(9) as keyof typeof PAINTING_SIZES]
+          : null
+        const tolerance = painting ? paintingTolerance(painting) : undefined
         animations.push(
-          element.animate(keyframes(simplify(entry)), {
+          element.animate(keyframes(simplify(entry, tolerance)), {
             timeline,
             fill: "both",
             rangeStart: `${first}px`,
@@ -521,17 +528,16 @@ export function Stage({
       {/*
         The grid the page aligns to.
         - Columns (`cols`): one margin, `--m`, from every edge of the window.
-          The logo's capitals and the badge's top sit on the top line, `--m`
-          down; the progress squares sit on the bottom line, `--m` up. Inside
-          the picture, `--inset` is the margin less the frame, so anything at
-          the inset lands on those lines: the badge, the windows' edges, the
-          portraits. The header and the rail rows are the same height,
-          `--edge`, so the copy is centred on the window's middle, which is
-          the picture's.
+          The logo's capitals sit on the top line, `--m` down; the progress
+          squares sit on the bottom line, `--m` up. Inside the picture,
+          `--inset` is the margin less the frame, so anything at the inset
+          lands on those lines: the square's edges, the portraits. The header
+          and the rail rows are the same height, `--edge`, so the copy is
+          centred on the window's middle, which is the picture's.
         - Band (`band`): one gutter, 1.5rem, or the copy column's edge where
-          the window is wider than the column. The logo, the copy, the badge
-          and the windows keep it from the sides, and the copy starts 1.5rem
-          below the band.
+          the window is wider than the column. The logo, the copy and the
+          square keep it from the sides, and the copy starts 1.5rem below the
+          band.
         - Short windows, a phone on its side: the rail goes and the header
           row tightens, so the copy keeps its room, a little above the middle. The band gives way to the copy: about 26rem stays for the
           header and the tallest scene, never less than 10rem of picture. It

@@ -23,10 +23,20 @@ export type Series = { offsets: number[]; styles: Style[] }
 
 /**
  * How far a dropped keyframe may stray, per property: 1% of opacity, a
- * quarter pixel, and a scale step that moves the picture under half a pixel.
+ * quarter pixel, and a scale step that moves a 1,000 px box's far edge a
+ * quarter pixel.
  */
-const TOLERANCE = { opacity: 0.01, x: 0.25, y: 0.25, s: 0.0001 } as const
+export type Tolerance = Record<(typeof PROPERTIES)[number], number>
+const TOLERANCE: Tolerance = { opacity: 0.01, x: 0.25, y: 0.25, s: 0.00025 }
 const PROPERTIES = ["opacity", "x", "y", "s"] as const
+
+/**
+ * A painting's scale moves its far corner by its diagonal times the change:
+ * a quarter pixel of that, at most.
+ */
+export function paintingTolerance(size: { w: number; h: number }): Tolerance {
+  return { ...TOLERANCE, s: TOLERANCE.x / Math.hypot(size.w, size.h) }
+}
 
 /**
  * Samples `frameAt` at `steps` even points through each segment, both ends
@@ -80,7 +90,10 @@ function same(a: Style, b: Style) {
  * straight line between kept ones (Douglas–Peucker, per stretch between
  * jumps).
  */
-export function simplify(series: Series): Series {
+export function simplify(
+  series: Series,
+  tolerance: Tolerance = TOLERANCE,
+): Series {
   const { offsets, styles } = series
   const keep = new Set<number>([0, offsets.length - 1])
   // A jump is two samples at one offset: both stay, and no line crosses it.
@@ -89,11 +102,11 @@ export function simplify(series: Series): Series {
     if (offsets[index] === offsets[index - 1]) {
       keep.add(index - 1)
       keep.add(index)
-      reduce(series, start, index - 1, keep)
+      reduce(series, start, index - 1, keep, tolerance)
       start = index
     }
   }
-  reduce(series, start, offsets.length - 1, keep)
+  reduce(series, start, offsets.length - 1, keep, tolerance)
   const kept = [...keep].sort((a, b) => a - b)
   return {
     offsets: kept.map((index) => offsets[index]!),
@@ -101,7 +114,13 @@ export function simplify(series: Series): Series {
   }
 }
 
-function reduce(series: Series, from: number, to: number, keep: Set<number>) {
+function reduce(
+  series: Series,
+  from: number,
+  to: number,
+  keep: Set<number>,
+  tolerance: Tolerance,
+) {
   if (to - from < 2) return
   const { offsets, styles } = series
   const a = styles[from]!
@@ -117,7 +136,7 @@ function reduce(series: Series, from: number, to: number, keep: Set<number>) {
       if (value === undefined) continue
       const line =
         (a[key] ?? value) + ((b[key] ?? value) - (a[key] ?? value)) * t
-      const error = Math.abs(value - line) / TOLERANCE[key]
+      const error = Math.abs(value - line) / tolerance[key]
       if (error > worst) {
         worst = error
         at = index
@@ -126,8 +145,8 @@ function reduce(series: Series, from: number, to: number, keep: Set<number>) {
   }
   if (worst <= 1) return
   keep.add(at)
-  reduce(series, from, at, keep)
-  reduce(series, at, to, keep)
+  reduce(series, from, at, keep, tolerance)
+  reduce(series, at, to, keep, tolerance)
 }
 
 /** A style as CSS: `opacity` and a `transform` the compositor can run. */

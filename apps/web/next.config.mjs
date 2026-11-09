@@ -10,9 +10,16 @@ const config = {
       ignore: [/^\/api\/oauth-test\/callback(?:\?|$)/],
     },
   },
-  // AVIF first, WebP for the rest. /new magnifies its illustration, so it
-  // asks for 85.
-  images: { formats: ["image/avif", "image/webp"], qualities: [75, 85] },
+  // AVIF first, WebP for the rest. /new magnifies its studio painting, so
+  // that one asks for 85. Past 2048 the widths step closely, so a large
+  // screen gets near the width it asks for, up to the studio's full 6,000.
+  images: {
+    formats: ["image/avif", "image/webp"],
+    qualities: [75, 85],
+    deviceSizes: [
+      640, 750, 828, 1080, 1200, 1920, 2048, 2560, 3072, 3840, 4800, 6000,
+    ],
+  },
   // The repository root, not the nearest lockfile Next infers: a worktree sits
   // inside the main checkout, and Tailwind scans from this root.
   turbopack: { root: fileURLToPath(new URL("../..", import.meta.url)) },

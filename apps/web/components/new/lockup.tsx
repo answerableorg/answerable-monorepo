@@ -11,7 +11,7 @@ export function Lockup() {
   return (
     <a
       href="/new"
-      className="text-[20px]/none font-bold whitespace-nowrap [text-box:trim-both_cap_alphabetic]"
+      className="text-[24px]/none font-bold whitespace-nowrap [text-box:trim-both_cap_alphabetic]"
     >
       <svg
         aria-hidden="true"

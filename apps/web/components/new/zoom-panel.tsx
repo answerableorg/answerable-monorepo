@@ -8,21 +8,14 @@ import {
   type Ref,
 } from "react"
 
+import { SHUTTERS, type Layout } from "@/components/new/frames"
 import {
-  BAND_BOX,
-  fieldLayers,
-  HEAD_BOX,
-  OVERLAP,
-  type Layout,
-} from "@/components/new/frames"
-import { GridFrame } from "@/components/new/grid-frame"
-import {
-  HERO,
-  PANEL_STATES,
+  COLUMN_QUERY,
+  PAINTINGS,
   PEOPLE,
+  type Painting,
   type Person,
 } from "@/components/new/scenes"
-import { COMMA } from "@/lib/stage-math"
 import { COMMA_PATH, COMMA_VIEW_BOX } from "@answerable/ui/lib/logo"
 import { cn } from "@answerable/ui/lib/utils"
 
@@ -35,15 +28,6 @@ export type ZoomPanelHandle = {
   /** The parts the stage's frames move, by key (see `frames.ts`). */
   targets: () => Map<string, HTMLElement | SVGElement>
 }
-
-const BAND_VIEW_BOX = `0 ${-OVERLAP} ${COMMA.band.w} ${COMMA.band.h + OVERLAP}`
-/**
- * The band starts left of the head (the tail's foot reaches 0.21 further) and
- * rises under it by the overlap: this covers the sliver of that rise left of
- * the head. It runs past the band's top and under the head, so none of its
- * edges meets another one.
- */
-const OVERLAP_COVER = `M-2 ${-OVERLAP - 2}H${(COMMA.head.x - COMMA.band.x + 1).toFixed(3)}V0.5H-2Z`
 
 /** The comma as a mask, as the logo has it or turned over (tail up). */
 function commaMask(turned: boolean): CSSProperties {
@@ -65,76 +49,52 @@ function commaMask(turned: boolean): CSSProperties {
   }
 }
 const COMMA_MASKS = [commaMask(false), commaMask(true)] as const
-/** The head's share of the comma's height. */
-const HEAD_SHARE = COMMA.head.h / (COMMA.head.h + COMMA.band.h)
-
-/** The `cols` variant in globals.css: the column beside the copy, else the band. */
-const COLUMN_QUERY =
-  "(min-width: 64rem), (min-width: 40rem) and (min-aspect-ratio: 4/3)"
-
-/** One colour layer per run of scenes in one field colour, in scene order. */
-const FIELDS = fieldLayers(PANEL_STATES).map((layer) => layer.colour)
+/** The comma's head (47.835 units tall) as a share of its 72.002 height. */
+const HEAD_SHARE = 47.835 / 72.002
 
 /** The panel's elements, set by their refs. */
 type Parts = {
   root: HTMLDivElement | null
-  fields: (HTMLDivElement | null)[]
-  head: HTMLDivElement | null
-  headImage: HTMLImageElement | null
-  band: HTMLDivElement | null
-  bandImage: HTMLImageElement | null
-  covers: (SVGSVGElement | null)[]
-  badge: HTMLDivElement | null
+  paintings: Map<string, HTMLImageElement>
+  shutters: Map<string, HTMLDivElement>
+  inset: HTMLDivElement | null
   halves: (HTMLDivElement | null)[]
 }
 
-function createParts(): Parts {
-  return {
-    root: null,
-    fields: [],
-    head: null,
-    headImage: null,
-    band: null,
-    bandImage: null,
-    covers: [],
-    badge: null,
-    halves: [],
-  }
-}
-
 function measurePanel(parts: Parts): Layout["panel"] {
-  const { root, head, band, badge } = parts
-  if (!root || !head || !root.clientWidth || !root.clientHeight) return null
-  // From here the picture is placed by transform, at its own size, inside
-  // two clip boxes that are placed by transform too.
-  Object.assign(head.style, {
-    inset: "auto",
-    left: "0",
-    top: "0",
-    width: `${HEAD_BOX.width}px`,
-    height: `${HEAD_BOX.height}px`,
-    transformOrigin: "0 0",
-    willChange: "transform",
-  })
-  for (const image of [parts.headImage, parts.bandImage]) {
-    if (!image) continue
-    Object.assign(image.style, {
+  const { root, inset } = parts
+  if (!root || !root.clientWidth || !root.clientHeight) return null
+  const w = root.clientWidth
+  const h = root.clientHeight
+  // From here each painting is placed by transform, at its own size, and the
+  // shutters, a pixel larger than the panel all round, slide into place.
+  for (const shutter of parts.shutters.values()) {
+    Object.assign(shutter.style, {
+      left: "-1px",
+      top: "-1px",
+      width: `${w + 2}px`,
+      height: `${h + 2}px`,
+      visibility: "visible",
+    })
+  }
+  for (const { key, size } of PAINTINGS) {
+    const element = parts.paintings.get(key)
+    if (!element) continue
+    Object.assign(element.style, {
       inset: "auto",
       left: "0",
       top: "0",
-      width: `${HERO.size.w}px`,
-      height: `${HERO.size.h}px`,
+      width: `${size.w}px`,
+      height: `${size.h}px`,
       transformOrigin: "0 0",
-      willChange: "transform",
+      willChange: "transform, opacity",
     })
   }
-  // Shown by its opacity from here.
-  if (band) band.style.visibility = "visible"
   return {
-    size: { w: root.clientWidth, h: root.clientHeight },
-    column: window.matchMedia(COLUMN_QUERY).matches,
-    // The badge sits at the panel's inset; the windows keep the same.
-    margin: badge?.offsetLeft ?? 24,
+    size: { w, h },
+    column: matchMedia(COLUMN_QUERY).matches,
+    // The square keeps to the panel's inset, as the portraits do.
+    margin: inset?.offsetLeft ?? 24,
   }
 }
 
@@ -144,13 +104,8 @@ function panelTargets(parts: Parts) {
     if (element) targets.set(key, element)
   }
   add("panel", parts.root)
-  add("head", parts.head)
-  add("headImage", parts.headImage)
-  add("band", parts.band)
-  add("bandImage", parts.bandImage)
-  add("badge", parts.badge)
-  parts.fields.forEach((field, layer) => add(`field:${layer}`, field))
-  parts.covers.forEach((cover, layer) => add(`cover:${layer}`, cover))
+  for (const [key, element] of parts.paintings) add(`painting:${key}`, element)
+  for (const [side, element] of parts.shutters) add(`shutter:${side}`, element)
   parts.halves.forEach((half, person) => {
     add(`half:${person}`, half)
     add(`comma:${person}`, (half?.firstElementChild as HTMLElement) ?? null)
@@ -159,20 +114,32 @@ function panelTargets(parts: Parts) {
 }
 
 /**
- * The image panel: the hero illustration seen through the logo's square or
- * comma on a colour field, the Answerable AP badge, and the two portraits.
- * The stage moves its parts (`frames.ts`); before that it is the plain
- * picture, as without JS.
+ * Decodes a painting the page shows later as soon as it has loaded, so the
+ * first move onto it does not decode in the middle of the scroll.
+ */
+function decodeAhead(image: HTMLImageElement) {
+  image.decode().catch(() => {})
+}
+
+/**
+ * The image panel: three paintings, each whole or seen through the logo's
+ * square on white, and the two portraits. The stage moves its parts
+ * (`frames.ts`); before that it is the meeting, whole, as without JS.
  *
  * Everything moves by transform or fades by opacity, so the browser's
- * compositor can play it. The window is two rectangle clips: the head, and
- * under it the band that holds the tail, whose curve static shapes in the
- * field's colour carve out. Each clip holds the same picture, so the browser
- * samples one decoded image and paints nothing. Each field colour is a solid
- * layer of its own; a colour change is one fading in over another.
+ * compositor can play it. Each painting has its own transform and opacity;
+ * four white shutters slide to frame the square, so nothing clips or rescales
+ * the paintings but their own transforms. Each screen downloads the width it
+ * needs (`sizes` in `scenes.ts`).
  */
 export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
-  const partsRef = useRef<Parts>(createParts())
+  const partsRef = useRef<Parts>({
+    root: null,
+    paintings: new Map(),
+    shutters: new Map(),
+    inset: null,
+    halves: [],
+  })
 
   useImperativeHandle(
     ref,
@@ -183,9 +150,6 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
     [],
   )
 
-  const imageClass =
-    "absolute inset-0 size-full max-w-none object-cover object-[50%_36%] cols:object-center"
-
   return (
     <div
       ref={(element) => {
@@ -193,106 +157,44 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
       }}
       className="@container absolute inset-0 overflow-hidden bg-white"
     >
-      {/* The field: a solid layer per colour, hidden until the stage runs. */}
-      {FIELDS.map((colour, layer) => (
-        <div
-          key={layer}
+      {/* The panel's inset, where the square and the portraits keep. */}
+      <div
+        ref={(element) => {
+          partsRef.current.inset = element
+        }}
+        aria-hidden="true"
+        className="absolute top-0 size-0"
+        style={{ left: "var(--inset, 5cqw)" }}
+      />
+
+      {/* The meeting, whole, until the stage takes over. */}
+      {PAINTINGS.map((painting) => (
+        <PaintingImage
+          key={painting.key}
+          painting={painting}
           ref={(element) => {
-            partsRef.current.fields[layer] = element
+            if (element) partsRef.current.paintings.set(painting.key, element)
+            else partsRef.current.paintings.delete(painting.key)
           }}
-          aria-hidden="true"
-          className="absolute inset-0 opacity-0 will-change-[opacity]"
-          style={{ backgroundColor: colour }}
         />
       ))}
 
-      {/* The band under the head: the tail, its curve carved by the covers.
-          Before the head, so the head paints over the part they share. The
-          picture is clipped inside the band and the covers run past that
-          clip: were both cut at one edge, the picture would show through
-          their two soft edges as a hairline. */}
-      <div
-        ref={(element) => {
-          partsRef.current.band = element
-        }}
-        aria-hidden="true"
-        className="absolute top-0 left-0 origin-top-left will-change-transform"
-        style={{
-          width: BAND_BOX.width,
-          height: BAND_BOX.height,
-          visibility: "hidden",
-        }}
-      >
-        <div className="absolute inset-0 overflow-hidden">
-          <Image
-            ref={(element) => {
-              partsRef.current.bandImage = element
-            }}
-            src={HERO.image}
-            alt=""
-            sizes="1086px"
-            quality={85}
-            loading="eager"
-            className={imageClass}
-          />
-        </div>
-        {FIELDS.map((colour, layer) => (
-          <svg
-            key={layer}
-            ref={(element) => {
-              partsRef.current.covers[layer] = element
-            }}
-            viewBox={BAND_VIEW_BOX}
-            preserveAspectRatio="none"
-            className="absolute inset-0 size-full overflow-visible opacity-0 will-change-[opacity]"
-            style={{ fill: colour }}
-          >
-            <path d={COMMA.covers} />
-            <path d={OVERLAP_COVER} />
-          </svg>
-        ))}
-      </div>
-
-      {/* The head: the whole picture until the stage takes over. */}
-      <div
-        ref={(element) => {
-          partsRef.current.head = element
-        }}
-        className="absolute inset-0 overflow-hidden"
-      >
-        <Image
+      {/* The white round the square, hidden until the stage runs. */}
+      {SHUTTERS.map((side) => (
+        <div
+          key={side}
           ref={(element) => {
-            partsRef.current.headImage = element
+            if (element) partsRef.current.shutters.set(side, element)
+            else partsRef.current.shutters.delete(side)
           }}
-          src={HERO.image}
-          alt={HERO.alt}
-          sizes="1086px"
-          quality={85}
-          placeholder="blur"
-          loading="eager"
-          fetchPriority="high"
-          className={imageClass}
+          aria-hidden="true"
+          className="absolute inset-0 bg-white will-change-transform"
+          style={{ visibility: "hidden" }}
         />
-      </div>
-
-      <div
-        ref={(element) => {
-          partsRef.current.badge = element
-        }}
-        aria-hidden="true"
-        className="absolute font-bold tracking-[-0.01em] text-black"
-        style={{
-          top: "var(--inset, 5cqw)",
-          left: "var(--inset, 5cqw)",
-          fontSize: "clamp(13px, 2.6cqw, 22px)",
-          lineHeight: 1.15,
-        }}
-      >
-        <GridFrame>Answerable AP</GridFrame>
-      </div>
+      ))}
 
       {/* A pixel past the panel's clip on every side: at a fractional edge
-          the halves' layers round short and the picture shows as a line. */}
+          the halves' layers round short and the painting shows as a line. */}
       <div className="cols:grid-cols-1 cols:grid-rows-2 pointer-events-none absolute -inset-px grid grid-cols-2">
         {PEOPLE.map((person, index) => (
           <Portrait
@@ -306,6 +208,35 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * One painting. The first is the picture without JS and loads first, under
+ * the splash; the others wait their turn and decode ahead of their scene.
+ */
+function PaintingImage({
+  ref,
+  painting,
+}: {
+  ref: Ref<HTMLImageElement>
+  painting: Painting
+}) {
+  const { first } = painting
+  return (
+    <Image
+      ref={ref}
+      src={painting.image}
+      alt={painting.alt}
+      sizes={painting.sizes}
+      quality={painting.quality}
+      loading="eager"
+      fetchPriority={first ? "high" : "low"}
+      placeholder={first ? "blur" : "empty"}
+      onLoad={first ? undefined : (event) => decodeAhead(event.currentTarget)}
+      className="cols:object-center absolute inset-0 size-full max-w-none object-cover object-[50%_36%]"
+      style={first ? undefined : { opacity: 0 }}
+    />
   )
 }
 

@@ -1,82 +1,155 @@
 import type { StaticImageData } from "next/image"
 
-import hero from "@/assets/new/hero.webp"
+import badge from "@/assets/new/badge.webp"
 import keir from "@/assets/new/keir.webp"
+import meeting from "@/assets/new/meeting.webp"
 import sadie from "@/assets/new/sadie.webp"
-import type { Window, WindowLayout } from "@/lib/stage-math"
+import studio from "@/assets/new/studio.webp"
+import type { Point, Window, WindowLayout } from "@/lib/stage-math"
 
 /**
- * The /new stage, as data: the scenes in scroll order, what the image panel
- * shows on each, and the details the six values zoom in on. A new
- * illustration is one file in `assets/new/` and new `focus` points here.
+ * The /new stage, as data: the scenes in scroll order, which painting the
+ * image panel shows on each and how, the details the six values zoom in on,
+ * and how one painting gives way to the next. A new painting is one file in
+ * `assets/new/` and an entry in `PAINTINGS`.
  */
 
 /** Scenes 0 to 9; the last snap point, 10, is the hero again. */
 export const SCENE_COUNT = 10
 
-export const HERO = {
-  image: hero,
-  size: { w: hero.width, h: hero.height },
-  alt: "An illustration of a practice at work around a long table: colleagues measure and label a white architectural model, one signs a drawing, two review a design on a laptop, and two pass a sealed letter.",
+/**
+ * The `cols` variant in globals.css: the panel beside the copy. Elsewhere it
+ * is the band across a phone.
+ */
+export const COLUMN_QUERY =
+  "(min-width: 64rem), (min-width: 40rem) and (min-aspect-ratio: 4/3)"
+
+/** `sizes` for an image: one width beside the copy, another in the band. */
+const sizes = (column: string, band: string) =>
+  COLUMN_QUERY.split(", ")
+    .map((query) => `${query} ${column}`)
+    .concat(band)
+    .join(", ")
+
+export type PaintingKey = "meeting" | "badge" | "studio"
+
+export type Painting = {
+  key: PaintingKey
+  image: StaticImageData
+  /** Its size in its own pixels, as the file has it (a test reads the file). */
+  size: { w: number; h: number }
+  /** Empty where the painting repeats what the copy says. */
+  alt: string
+  /** 75 where it is never magnified, 85 where the squares magnify it. */
+  quality: 75 | 85
+  /**
+   * How wide the browser should think it is drawn, so each screen downloads
+   * the width it needs (`images.deviceSizes` in next.config.mjs).
+   */
+  sizes: string
+  /** Loaded first, under the splash: the painting the page opens on. */
+  first: boolean
 }
+
+/**
+ * The three gouache paintings, bottom to top: each fades in over the one
+ * before it. The meeting, at the bottom, never changes opacity, and only one
+ * painting ever changes opacity at a time (see `frames.ts`).
+ */
+export const PAINTINGS: readonly Painting[] = [
+  {
+    key: "meeting",
+    image: meeting,
+    size: { w: 3840, h: 5120 },
+    alt: "A painting of six colleagues talking round a table in a garden, with laptops, books and a voice recorder; the woman in a red blazer holds an Answerable AP badge.",
+    quality: 75,
+    // It covers the panel: about the panel's width.
+    sizes: sizes("50vw", "100vw"),
+    first: true,
+  },
+  {
+    key: "badge",
+    image: badge,
+    size: { w: 3840, h: 5120 },
+    alt: "",
+    quality: 75,
+    sizes: sizes("50vw", "100vw"),
+    first: false,
+  },
+  {
+    key: "studio",
+    image: studio,
+    size: { w: 6000, h: 2162 },
+    alt: "",
+    quality: 85,
+    // The squares show about a thousand of its 6,000 pixels in two thirds
+    // of the panel (four fifths of the band): drawn whole, it would be about
+    // 3,300 px wide beside a laptop's copy and 1,100 in a phone's band.
+    sizes: sizes("3000px", "1024px"),
+    first: false,
+  },
+]
+
+/** Each painting's size in its own pixels. */
+export const PAINTING_SIZES = Object.fromEntries(
+  PAINTINGS.map(({ key, size }) => [key, size]),
+) as Record<PaintingKey, { w: number; h: number }>
 
 /**
  * The brand's four highlights: each value's number, its square on the rail
  * and the index highlight. The image panel itself stays white round its
- * windows, with no colour behind the picture.
+ * square.
  */
 const SKY = "var(--highlight-1)"
 const SAND = "var(--highlight-2)"
 const GREEN = "var(--highlight-3)"
 const CORAL = "var(--highlight-4)"
 const BLACK = "#000"
-const WHITE = "#fff"
 
 export type Value = {
   text: string
   /** The value's number, its rail square and its index highlight. */
   colour: string
-  /** The detail of the illustration that stands for it. */
+  /** The detail of the studio painting that stands for it. */
   window: Window
 }
 
 /**
- * The six values, each with the detail Laura's zooms frame: the signature,
- * the ruler, the conversation, the name plaque, the sealed letter, the
- * laptop. `focus` is in the illustration's pixels (1086×1448). The windows
- * take the logo's two marks, two squares then a comma, twice over, so the
- * tail grows and retracts as the reader goes.
+ * The six values, each with its detail in the studio panorama (6000×2162),
+ * from left to right: drawing a plan by hand, measuring the model, presenting
+ * at the easel, the plaque set on the model, a sealed letter handed over, a
+ * 3D printer beside a laptop. The square travels along the painting.
  */
 export const VALUES: readonly Value[] = [
   {
     text: "We hold ourselves answerable for our work.",
     colour: GREEN,
-    window: { focus: [866, 998], span: 250, size: 1.05, shape: "square" },
+    window: { focus: [880, 1560], span: 1000 },
   },
   {
     text: "We use AI only where we are competent to do so.",
     colour: CORAL,
-    window: { focus: [478, 600], span: 300, size: 1.2, shape: "square" },
+    window: { focus: [1600, 1250], span: 1000 },
   },
   {
     text: "We are honest about how we use AI.",
     colour: SKY,
-    window: { focus: [446, 392], span: 330, size: 1.1, shape: "comma" },
+    window: { focus: [2800, 650], span: 1000 },
   },
   {
     text: "We respect the intellectual and creative work of others.",
     colour: SAND,
-    window: { focus: [296, 800], span: 210, size: 1, shape: "square" },
+    window: { focus: [4350, 1650], span: 1000 },
   },
   {
     text: "We protect the information entrusted to us.",
     colour: GREEN,
-    window: { focus: [262, 1166], span: 230, size: 1, shape: "square" },
+    window: { focus: [4250, 650], span: 1000 },
   },
   {
     text: "We use AI to strengthen our professions, not to diminish them.",
     colour: CORAL,
-    window: { focus: [898, 482], span: 380, size: 1.15, shape: "comma" },
+    window: { focus: [5400, 850], span: 1000 },
   },
 ]
 
@@ -84,53 +157,79 @@ export const VALUES: readonly Value[] = [
 export const VALUES_FROM = 2
 
 export type PanelState = {
-  /** The colour round the window (white); none while the picture is open. */
-  field: string | null
-  /** The comma window; none for the whole picture. */
+  painting: PaintingKey
+  /** The square on a detail; none for the whole painting. */
   window: Window | null
-  /** The Answerable AP badge in the corner: only beside the form. */
-  badge: boolean
-  /** The two portraits over the picture. */
+  /** The two portraits over the painting. */
   team: boolean
-}
-
-const OPEN: PanelState = {
-  field: null,
-  window: null,
-  badge: false,
-  team: false,
 }
 
 /** One per scene, by index. */
 export const PANEL_STATES: readonly PanelState[] = [
-  // Hero: the whole picture, and the badge beside the form.
-  { ...OPEN, badge: true },
-  // Programme: white closes in to the model, the work itself.
-  {
-    ...OPEN,
-    field: WHITE,
-    window: { focus: [556, 786], span: 760, size: 1.75, shape: "comma" },
-  },
-  // The values: a window on each detail, on white.
+  // Hero: the meeting, whole.
+  { painting: "meeting", window: null, team: false },
+  // Programme: the badge, close up.
+  { painting: "badge", window: null, team: false },
+  // The values: a square on each detail of the studio, on white.
   ...VALUES.map((value) => ({
-    ...OPEN,
-    field: WHITE,
+    painting: "studio" as const,
     window: value.window,
+    team: false,
   })),
-  // People: the picture opens again under the portraits.
-  { ...OPEN, team: true },
-  // Join: the whole picture, as the hero has it.
-  OPEN,
+  // People: the portraits, the meeting behind them.
+  { painting: "meeting", window: null, team: true },
+  // Join: the meeting, whole, as the hero has it.
+  { painting: "meeting", window: null, team: false },
 ]
 
 /**
- * The panel's two shapes. `column` is the image beside the copy; `band` is
- * the strip across a phone. Sizes are shares of the shorter side; the margin
- * is the panel's inset, `--inset`, which the badge measures out.
+ * How one painting gives way to the next in scroll order, where nothing
+ * covers the change. The outgoing painting moves in by `push` about its
+ * anchor. The incoming one either settles from `push` about its own anchor,
+ * or waits where it lands while the square closes (`"square"`), fading in no
+ * sooner than the square sits inside it. It fades in over `fade`, a share of
+ * the move. Neither ever shows its edge.
+ */
+export type Cut = {
+  from: PaintingKey
+  to: PaintingKey
+  out: { anchor: Point; push: number }
+  in: { anchor: Point; push: number } | "square"
+  fade: readonly [number, number]
+}
+
+/** The badge's centre in the meeting, where the woman holds it. */
+const MEETING_BADGE: Point = [1322, 2541]
+/** The badge's centre in the close-up. */
+const BADGE_BADGE: Point = [2176, 2785]
+
+export const CUTS: readonly Cut[] = [
+  // The camera moves in on her badge, and the close-up of it settles.
+  {
+    from: "meeting",
+    to: "badge",
+    out: { anchor: MEETING_BADGE, push: 1 },
+    in: { anchor: BADGE_BADGE, push: 1 },
+    fade: [0.2, 0.8],
+  },
+  // White closes in round the badge; the first detail dissolves in.
+  {
+    from: "badge",
+    to: "studio",
+    out: { anchor: BADGE_BADGE, push: 1 },
+    in: "square",
+    fade: [0.45, 0.9],
+  },
+]
+
+/**
+ * The panel's two shapes. `column` is the panel beside the copy; `band` is
+ * the strip across a phone. The square is a share of the shorter side, kept
+ * inside the panel's inset, `--inset`.
  */
 export const WINDOW_LAYOUTS = {
-  column: { base: 0.36, anchorY: 0.5, maxScale: 1.3 },
-  band: { base: 0.5, anchorY: 0.36, maxScale: 1.3 },
+  column: { size: 0.64, anchorY: 0.5 },
+  band: { size: 0.8, anchorY: 0.36 },
 } as const satisfies Record<string, WindowLayout>
 
 export type Person = {

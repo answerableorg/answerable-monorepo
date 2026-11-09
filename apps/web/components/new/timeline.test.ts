@@ -4,6 +4,7 @@ import type { Frame } from "./frames"
 import {
   css,
   keyframes,
+  paintingTolerance,
   sample,
   simplify,
   STEPS,
@@ -97,20 +98,28 @@ describe("unit: the timeline's keyframes", () => {
 })
 
 describe("unit: the stage's timeline", () => {
-  test("the picture keeps within half a pixel of its exact path", async () => {
-    const { frameAt, KINKS } = await import("./frames")
-    const { PANEL_STATES, SCENE_COUNT, WINDOW_LAYOUTS } =
-      await import("./scenes")
+  test("the painting on top keeps within half a pixel of its exact path", async () => {
+    const { frameAt, KINKS, SHUTTERS } = await import("./frames")
+    const {
+      CUTS,
+      PAINTING_SIZES,
+      PAINTINGS,
+      PANEL_STATES,
+      SCENE_COUNT,
+      WINDOW_LAYOUTS,
+    } = await import("./scenes")
     const script = {
       sceneCount: SCENE_COUNT,
       states: PANEL_STATES,
-      image: { w: 1086, h: 1448 },
+      paintings: PAINTING_SIZES,
+      cuts: CUTS,
       layouts: WINDOW_LAYOUTS,
       people: 2,
     }
     for (const [size, column] of [
-      [{ w: 704, h: 868 }, true],
-      [{ w: 390, h: 300 }, false],
+      [{ w: 848, h: 905 }, true],
+      [{ w: 1248, h: 1376 }, true],
+      [{ w: 393, h: 243 }, false],
     ] as const) {
       const layout = {
         reduced: false,
@@ -130,8 +139,26 @@ describe("unit: the stage's timeline", () => {
         (segment, t) => (segment + t) / SCENE_COUNT,
         KINKS,
       )
-      const head = simplify(series.get("head")!)
-      const image = simplify(series.get("headImage")!)
+      // As the stage simplifies them.
+      const shutters = new Map(
+        SHUTTERS.map((side) => [
+          side,
+          simplify(series.get(`shutter:${side}`)!),
+        ]),
+      )
+      const paintings = new Map(
+        PAINTINGS.map(({ key, size: image }) => [
+          key,
+          simplify(series.get(`painting:${key}`)!, paintingTolerance(image)),
+        ]),
+      )
+      const keyframes = [...shutters.values(), ...paintings.values()].reduce(
+        (sum, s) => sum + s.offsets.length,
+        0,
+      )
+      // WebKit's main thread slows past about 1,800 for the whole page.
+      expect(keyframes).toBeLessThan(700)
+
       const along = (simple: Series, offset: number, key: "x" | "y" | "s") => {
         const { offsets, styles } = simple
         let index = offsets.findLastIndex((value) => value <= offset)
@@ -148,37 +175,53 @@ describe("unit: the stage's timeline", () => {
       for (let n = 0; n <= SCENE_COUNT * 600; n++) {
         const progress = n / 600
         const frame = exact(progress)
-        // Hidden under the portraits' colours, the picture is not seen.
+        // Under the portraits' white halves nothing else is seen.
         if (frame["half:0"]!.opacity! >= 0.999) continue
         const offset = progress / SCENE_COUNT
-        const h = {
-          x: along(head, offset, "x"),
-          y: along(head, offset, "y"),
-          s: along(head, offset, "s"),
+        // The shutters' edges.
+        for (const side of SHUTTERS) {
+          const key = side === "top" || side === "bottom" ? "y" : "x"
+          const exactly = frame[`shutter:${side}`]![key]!
+          // Only an edge inside the panel is seen.
+          const extent = key === "x" ? size.w : size.h
+          const edge =
+            side === "top" || side === "left"
+              ? exactly + extent + 1
+              : exactly - 1
+          if (edge < 0 || edge > extent) continue
+          const drawn = along(shutters.get(side)!, offset, key)
+          worst = Math.max(worst, Math.abs(drawn - exactly))
         }
-        const i = {
-          x: along(image, offset, "x"),
-          y: along(image, offset, "y"),
-          s: along(image, offset, "s"),
+        // The painting on top, at the open square's corners and middle.
+        const key = PAINTINGS.map(({ key }) => key).findLast(
+          (key) => frame[`painting:${key}`]!.opacity! > 0.5,
+        )
+        if (!key) continue
+        const e = frame[`painting:${key}`]!
+        const p = paintings.get(key)!
+        const d = {
+          x: along(p, offset, "x"),
+          y: along(p, offset, "y"),
+          s: along(p, offset, "s"),
         }
-        const e = frame.head!
-        const ei = frame.headImage!
-        for (const [x, y] of [
-          [0, 0],
-          [1086, 1448],
-          [543, 724],
+        const left = Math.max(0, frame["shutter:left"]!.x! + size.w + 1)
+        const right = Math.min(size.w, frame["shutter:right"]!.x! - 1)
+        const top = Math.max(0, frame["shutter:top"]!.y! + size.h + 1)
+        const bottom = Math.min(size.h, frame["shutter:bottom"]!.y! - 1)
+        for (const [sx, sy] of [
+          [left, top],
+          [right, top],
+          [left, bottom],
+          [right, bottom],
+          [(left + right) / 2, (top + bottom) / 2],
         ] as const) {
-          const drawn = [
-            h.x + (i.x + i.s * x) * h.s,
-            h.y + (i.y + i.s * y) * h.s,
-          ]
-          const truth = [
-            e.x! + (ei.x! + ei.s! * x) * e.s!,
-            e.y! + (ei.y! + ei.s! * y) * e.s!,
-          ]
+          // The painting's own point drawn there exactly, and where the
+          // simplified keyframes draw it.
+          const px = (sx - e.x!) / e.s!
+          const py = (sy - e.y!) / e.s!
           worst = Math.max(
             worst,
-            Math.hypot(drawn[0]! - truth[0]!, drawn[1]! - truth[1]!),
+            Math.hypot(d.x + d.s * px - sx, d.y + d.s * py - sy),
           )
         }
       }

@@ -93,3 +93,16 @@
 
 - Owner: hero headline "The professional standard for responsible AI."; the line under it ends "Register to join the founding cohort."; the programme title's "A" should start the second line, not end the first.
 - The programme title sets each sentence on its own line, so "A practice that can answer for its AI." always starts a line.
+
+## 2026-11-09, round 5: three paintings (plan)
+
+- Owner: three new gouache paintings in `~/Downloads/OneDrive_1_09-11-2026/` (landing, the values as a panorama, the Answerable AP programme); remove the coded stamp; logo a bit bigger; bigger squares when zooming; images sized per screen and compressed; plan with files and report before coding.
+- Plan in `round-5/` (`task_plan.md`, `findings.md`, `design.md`). Probes, all in the scratchpad: masters in four formats with PSNR against the PNGs; per-width AVIF and WebP with Next's encoder settings, calibrated against Vercel's live responses (WebP identical, AVIF within 15%); six detail crops; panel mock-ups at the owner's laptop and iPhone 15 sizes.
+- Nothing changed in code. Waiting on the owner's answers to D1 to D4.
+
+## 2026-11-09, round 5: built
+
+- Owner took D1 to D4 as proposed. Built in worktree `.claude/worktrees/new-landing-r5` (branch `claude/new-landing-r5`, from c68271da), nothing committed yet: three paintings, squares only at 0.64 (0.8 in the band), the stamp and `GridFrame` gone, logo 24 px, `images.deviceSizes` up to 6000, per-painting `sizes` and quality.
+- Measured on the production build (details in `round-5/findings.md`): images per screen 218 KB to 1,331 KB; Chromium better than live (no GPU stall, one slow frame per loop against live's 2 to 3); WebKit level with live except one frame of 37 to 89 ms at phone size entering the people scene.
+- To get there: one zoom for all six values (Chromium GPU stalls); the square clip replaced by four sliding white shutters, one painting changing opacity at a time, hidden paintings at 0.2% rather than 0, plain dissolves (WebKit).
+- Gates: typecheck 0, lint 0, web tests 175 pass, build 0, knip nothing new. Not tested on a real iPhone. Temporary `web-r5` entry (port 47150) in the main checkout's `.claude/launch.json`, to revert at the end.

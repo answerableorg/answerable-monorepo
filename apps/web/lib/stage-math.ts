@@ -1,7 +1,8 @@
 /**
  * The arithmetic of the /new stage: where the scroll is between two scenes,
- * how a scene's lines move, and where the comma window sits over the hero
- * illustration. Pure, so the browser only reads the page and writes styles.
+ * how a scene's lines move, and where the square window and the paintings
+ * sit in the image panel. Pure, so the browser only reads the page and
+ * writes styles.
  */
 
 export const clamp = (value: number, min: number, max: number) =>
@@ -120,58 +121,29 @@ export function rollFrame(offset: number): { opacity: number; shift: number } {
 export type Size = { w: number; h: number }
 export type Point = readonly [number, number]
 
-/**
- * The comma of the logo, in its own units (`COMMA_PATH`): a head 48 wide and
- * 47.835 tall centred on (1128, 239.9155), and below it a band 24.167 tall
- * that holds the tail. The window draws the head as a plain rectangle clip and
- * the band as a second one, with two shapes in the field's colour carving the
- * tail out of it, so nothing is masked or repainted as the window moves.
- */
-export const COMMA = {
-  head: { x: 1104, y: 215.998, w: 48, h: 47.835 },
-  band: { x: 1103.79, y: 263.833, w: 48.21, h: 24.167 },
-  /**
-   * Band-local shapes that are field, not tail: left of the curve and right of
-   * the slope. They overhang the band by 2 units where they meet its edges, so
-   * no edge pixel lets the picture through; the band's clip trims them.
-   */
-  covers:
-    "M-2 0H20.77L20.78 3.159C14.11 8.589 0 24.167 0 24.167V26.167H-2Z" +
-    "M48.21 0H50.21V26.167H23.93V24.167Z",
-} as const
-
-/** The band's height as a share of the head's width: how far the tail reaches. */
-export const TAIL = COMMA.band.h / COMMA.head.w
-const HEAD_RATIO = COMMA.head.h / COMMA.head.w
-
-/** The window's shape: the logo's comma, or its square, the comma's head alone. */
-export type Shape = "comma" | "square"
-
-/** A view of the illustration through the window: what it shows and how big. */
+/** A view of a painting through the square window: what it shows. */
 export type Window = {
-  /** The detail, in the image's pixels; the window centres on it. */
+  /** The detail, in the painting's pixels; the square centres on it. */
   focus: Point
-  /** How many image pixels the head spans. */
+  /** How many of the painting's pixels the square spans. */
   span: number
-  /** The head's size as a multiple of the layout's base size. */
-  size: number
-  shape: Shape
 }
 
-/** How a panel shape places windows, as shares of the panel's shorter side. */
+/** How a panel shape places the square. */
 export type WindowLayout = {
-  /** The head at `size` 1. */
-  base: number
-  /** Where a cropped image sits vertically when the window is open: 0 top, 1 bottom. */
+  /** The square's side, as a share of the panel's shorter side. */
+  size: number
+  /**
+   * Where a cropped painting sits vertically, 0 top to 1 bottom: covering
+   * the panel when open, fitted inside it when the square is placed.
+   */
   anchorY: number
-  /** The largest magnification, in panel pixels per image pixel. */
-  maxScale: number
 }
 
 /**
- * Where the image and the window are: the image drawn at `scale` with its
- * top-left at (`x`, `y`); the head `head` wide, centred on (`cx`, `cy`); the
- * tail out by `tail`, 0 for the square and 1 for the comma.
+ * Where a painting and the window are: the painting drawn at `scale` with its
+ * top-left at (`x`, `y`); the square `side` wide, centred on (`cx`, `cy`),
+ * over the painting's point `focus`.
  */
 export type Geometry = {
   x: number
@@ -179,27 +151,31 @@ export type Geometry = {
   scale: number
   cx: number
   cy: number
-  head: number
-  tail: number
+  side: number
   focus: Point
 }
 
-/** The scale at which the image covers the panel, as `object-fit: cover`. */
+/** The scale at which the painting covers the panel, as `object-fit: cover`. */
 function coverScale(panel: Size, image: Size) {
   return Math.max(panel.w / image.w, panel.h / image.h)
 }
 
-const tailOf = (shape: Shape) => (shape === "comma" ? 1 : 0)
+/**
+ * Half the side of a square centred on (`cx`, `cy`) that just covers the
+ * panel, with a twentieth to spare.
+ */
+export function coverReach(panel: Size, cx: number, cy: number) {
+  return Math.max(cx, panel.w - cx, cy, panel.h - cy, 1) * 1.05
+}
 
 /**
- * The whole picture, covering the panel, with the head opened round `focus`
- * until it is larger than the panel: the start of a zoom on `focus`.
+ * The whole painting, covering the panel, with the square opened round
+ * `focus` until it is larger than the panel: the start of a zoom on `focus`.
  */
 export function openGeometry(
   panel: Size,
   image: Size,
   focus: Point,
-  shape: Shape,
   layout: WindowLayout,
 ): Geometry {
   const scale = coverScale(panel, image)
@@ -207,16 +183,16 @@ export function openGeometry(
   const y = (panel.h - image.h * scale) * layout.anchorY
   const cx = x + focus[0] * scale
   const cy = y + focus[1] * scale
-  const reach = Math.max(cx, panel.w - cx, cy, panel.h - cy, 1)
-  return { x, y, scale, cx, cy, head: reach * 2.1, tail: tailOf(shape), focus }
+  return { x, y, scale, cx, cy, side: coverReach(panel, cx, cy) * 2, focus }
 }
 
 /**
- * The window closed down on a detail: its head `size` × base, clamped so the
- * whole shape stays `margin` pixels inside the panel, placed where the detail
- * sits in the open picture, and the picture magnified so the head spans
- * `span` pixels. Near the picture's edge the detail moves in, so the window
- * never shows past it.
+ * The square closed down on a detail: `size` of the panel's shorter side,
+ * clamped `margin` pixels inside the panel; placed where the detail sits in
+ * the whole painting fitted inside the panel, so the square travels across
+ * the panel as the details do across the painting; the painting magnified so
+ * the square spans `span` of its pixels. Near the painting's edge the detail
+ * moves in, so the square never shows past it.
  */
 export function windowGeometry(
   panel: Size,
@@ -225,43 +201,46 @@ export function windowGeometry(
   layout: WindowLayout,
   margin: number,
 ): Geometry {
-  const tail = tailOf(window.shape)
-  const short = Math.min(panel.w, panel.h)
-  const head = Math.min(
-    window.size * layout.base * short,
-    (panel.h - 2 * margin) / (HEAD_RATIO + tail * TAIL),
+  const side = Math.min(
+    layout.size * Math.min(panel.w, panel.h),
+    panel.h - 2 * margin,
     panel.w - 2 * margin,
   )
-  const above = (head * HEAD_RATIO) / 2
-  const below = above + tail * TAIL * head
-  const scale = Math.min(head / window.span, layout.maxScale)
-  // The shape must see only picture: move the detail in from the edges by
-  // whatever the window would show past them.
-  const halfWidth = head / 2 / scale
+  const scale = side / window.span
+  const half = window.span / 2
   const focus: Point = [
-    clamp(window.focus[0], halfWidth, image.w - halfWidth),
-    clamp(window.focus[1], above / scale, image.h - below / scale),
+    clamp(window.focus[0], half, image.w - half),
+    clamp(window.focus[1], half, image.h - half),
   ]
-  const open = openGeometry(panel, image, focus, window.shape, layout)
-  const cx = clamp(open.cx, margin + head / 2, panel.w - margin - head / 2)
-  const cy = clamp(open.cy, margin + above, panel.h - margin - below)
+  const fit = Math.min(panel.w / image.w, panel.h / image.h)
+  const left = (panel.w - image.w * fit) / 2
+  const top = (panel.h - image.h * fit) * layout.anchorY
+  const cx = clamp(
+    left + focus[0] * fit,
+    margin + side / 2,
+    panel.w - margin - side / 2,
+  )
+  const cy = clamp(
+    top + focus[1] * fit,
+    margin + side / 2,
+    panel.h - margin - side / 2,
+  )
   return {
     x: cx - focus[0] * scale,
     y: cy - focus[1] * scale,
     scale,
     cx,
     cy,
-    head,
-    tail,
+    side,
     focus,
   }
 }
 
 /**
- * Between two geometries: the detail and the window's centre glide; the head
- * and the zoom change on a log scale; the tail grows or slides back under the
- * head. Both ends put the detail at the head's centre, so the picture is
- * placed from the interpolated detail and the window keeps it centred.
+ * Between two geometries of one painting: the detail and the square's centre
+ * glide; the side and the zoom change on a log scale. Both ends put the
+ * detail at the square's centre, so the painting is placed from the
+ * interpolated detail and the square keeps it centred.
  */
 export function mixGeometry(a: Geometry, b: Geometry, t: number): Geometry {
   const focus: Point = [
@@ -277,32 +256,22 @@ export function mixGeometry(a: Geometry, b: Geometry, t: number): Geometry {
     scale,
     cx,
     cy,
-    head: lerpLog(a.head, b.head, t),
-    tail: lerp(a.tail, b.tail, t),
+    side: lerpLog(a.side, b.side, t),
     focus,
   }
 }
 
+/** Where a painting is drawn: its top-left on the panel, and its scale. */
+export type Placement = { x: number; y: number; scale: number }
+
 /**
- * The two clipping boxes for a geometry, in panel pixels, each `unit` pixels
- * per comma unit: the head, and the band under it, raised by `overlap` units
- * so the two never show a seam, and slid up under the head as the tail
- * retracts.
+ * The painting of `g` scaled `k` times about its own point `anchor`, which
+ * stays where it is on the panel. A painting that covers the panel still
+ * covers it for any `k` of 1 or more, since the anchor is inside it.
  */
-export function windowBoxes(geometry: Geometry, overlap: number) {
-  const unit = geometry.head / COMMA.head.w
-  const centreX = COMMA.head.x + COMMA.head.w / 2
-  const centreY = COMMA.head.y + COMMA.head.h / 2
-  const head = {
-    x: geometry.cx - (COMMA.head.w / 2) * unit,
-    y: geometry.cy - (COMMA.head.h / 2) * unit,
-  }
-  const band = {
-    x: geometry.cx + (COMMA.band.x - centreX) * unit,
-    y:
-      geometry.cy +
-      (COMMA.band.y - overlap - centreY) * unit -
-      (1 - geometry.tail) * COMMA.band.h * unit,
-  }
-  return { unit, head, band }
+export function pushed(g: Geometry, anchor: Point, k: number): Placement {
+  const px = g.x + anchor[0] * g.scale
+  const py = g.y + anchor[1] * g.scale
+  const scale = g.scale * k
+  return { x: px - anchor[0] * scale, y: py - anchor[1] * scale, scale }
 }
