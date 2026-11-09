@@ -117,22 +117,30 @@ export default function Page() {
               Everything we teach and assess is rooted in six commitments.
             </p>
           </div>
-          {/* The index: a square of colour slides from number to number. */}
+          {/* The index: a square of colour slides from number to number,
+              each value's colour a layer that fades in over the last. */}
           <div
             data-line
             aria-hidden="true"
             className="stage:flex relative mt-6 hidden gap-2"
           >
-            <span
-              data-highlight
-              className="absolute top-0 left-0 size-8"
-              style={{ backgroundColor: VALUES[0]!.colour }}
-            />
+            <span data-highlight className="absolute top-0 left-0 size-8">
+              {VALUES.map((value, index) => (
+                <span
+                  key={value.text}
+                  data-tint
+                  className="absolute inset-0 will-change-[opacity]"
+                  style={{
+                    backgroundColor: value.colour,
+                    opacity: index === 0 ? 1 : 0,
+                  }}
+                />
+              ))}
+            </span>
             {VALUES.map((value, index) => (
               <span
                 key={value.text}
                 data-mark
-                data-colour={value.colour}
                 className="relative grid size-8 place-items-center text-sm font-black tabular-nums"
               >
                 {index + 1}

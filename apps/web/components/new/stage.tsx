@@ -8,16 +8,29 @@ import {
   type Ref,
 } from "react"
 
-import { RAIL, SCENE_COUNT } from "@/components/new/scenes"
-import { ZoomPanel, type ZoomPanelHandle } from "@/components/new/zoom-panel"
 import {
-  clamp,
-  lineFrame,
-  rollFrame,
-  offsetFrom,
-  progressAt,
-  scrub,
-} from "@/lib/stage-math"
+  frameAt,
+  KINKS,
+  type Layout,
+  type Script,
+} from "@/components/new/frames"
+import {
+  HERO,
+  PANEL_STATES,
+  PEOPLE,
+  RAIL,
+  SCENE_COUNT,
+  WINDOW_LAYOUTS,
+} from "@/components/new/scenes"
+import {
+  css,
+  keyframes,
+  sample,
+  simplify,
+  STEPS,
+} from "@/components/new/timeline"
+import { ZoomPanel, type ZoomPanelHandle } from "@/components/new/zoom-panel"
+import { clamp, offsetFrom, progressAt } from "@/lib/stage-math"
 import { cn } from "@answerable/ui/lib/utils"
 
 /** Snap points: one per scene, and the hero again at the end. */
@@ -26,6 +39,22 @@ const SNAPS = SCENE_COUNT + 1
 const LINE_TRAVEL = 24
 /** Navigation further than this many scenes cuts through a fade. */
 const SMOOTH_REACH = 2
+/** Rebuilds while the window resizes come at most this often, in ms. */
+const REBUILD_EVERY = 120
+
+const SCRIPT: Script = {
+  sceneCount: SCENE_COUNT,
+  states: PANEL_STATES,
+  image: HERO.size,
+  layouts: WINDOW_LAYOUTS,
+  people: PEOPLE.length,
+}
+
+/** The scroll timeline, where the browser has one (not in lib.dom yet). */
+type ScrollTimelineClass = new (options: {
+  source: Element
+  axis: "block"
+}) => AnimationTimeline
 
 type SceneParts = {
   element: HTMLElement
@@ -35,12 +64,8 @@ type SceneParts = {
   steps: HTMLElement[]
   marks: HTMLElement[]
   highlight: HTMLElement | null
+  tints: HTMLElement[]
   current: boolean
-  /** Off screen at the last frame, its lines already written out. */
-  hidden: boolean
-  /** The statements' box height and the index numbers' places, measured once. */
-  travel: number
-  markX: number[]
 }
 
 const FIELD_SELECTOR = "input, select, textarea, [role='combobox']"
@@ -52,6 +77,12 @@ const FIELD_SELECTOR = "input, select, textarea, [role='combobox']"
  * between two scenes, so every change is scrubbed by hand and rests on a
  * scene. The last snap point shows the hero again; settling there jumps to the
  * top, which looks the same.
+ *
+ * What moves is a function of the scroll (`frames.ts`). Where the browser has
+ * scroll timelines it is sampled once into animations the browser plays on
+ * its compositor against the scroll, so a busy main thread never holds the
+ * page still; elsewhere it is drawn each frame. Only the scene-level switches
+ * (which scene takes the pointer, the progress squares) run on scroll events.
  *
  * Everything here is an enhancement: an inline script marks `<html>` with
  * `data-stage` before first paint, and the `stage:` variant switches the
@@ -77,7 +108,14 @@ export function Stage({
     const stage = stageRef.current
     const track = trackRef.current
     const sceneArea = scenesRef.current
-    if (!html.hasAttribute("data-stage") || !stage || !track || !sceneArea) {
+    const panel = panelRef.current
+    if (
+      !html.hasAttribute("data-stage") ||
+      !stage ||
+      !track ||
+      !sceneArea ||
+      !panel
+    ) {
       return
     }
 
@@ -97,45 +135,161 @@ export function Stage({
       steps: [...element.querySelectorAll<HTMLElement>("[data-step]")],
       marks: [...element.querySelectorAll<HTMLElement>("[data-mark]")],
       highlight: element.querySelector<HTMLElement>("[data-highlight]"),
+      tints: [...element.querySelectorAll<HTMLElement>("[data-tint]")],
       current: false,
-      hidden: false,
-      travel: 0,
-      markX: [],
     }))
+    const values = scenes.find((scene) => scene.steps.length > 1)
 
-    // A style is only set when it changes, and nothing is read from layout
-    // while a frame is drawn: sizes are measured on resize.
+    // Every element a frame moves, by its key in `frames.ts`.
+    const targets = new Map<string, HTMLElement | SVGElement>(panel.targets())
+    scenes.forEach((scene, index) =>
+      scene.lines.forEach((line, n) => targets.set(`line:${index}:${n}`, line)),
+    )
+    if (values) {
+      values.steps.forEach((step, n) => targets.set(`step:${n}`, step))
+      values.marks.forEach((mark, n) => targets.set(`mark:${n}`, mark))
+      values.tints.forEach((tint, n) => targets.set(`tint:${n}`, tint))
+      if (values.highlight) targets.set("highlight", values.highlight)
+    }
+
+    const Timeline = (globalThis as { ScrollTimeline?: ScrollTimelineClass })
+      .ScrollTimeline
+    const timeline = Timeline
+      ? new Timeline({ source: html, axis: "block" })
+      : null
+
+    let tops: number[] = []
+    let layout: Layout | null = null
+    let signature = ""
+    let animations: Animation[] = []
+    let target = 0
+    let frame = 0
+    let frozen = false
+    let stale = false
+    let settleTimer = 0
+    let buildTimer = 0
+    let builtAt = 0
+    let railIndex = -1
+
+    // The script driver sets a style only when it changes.
     let written = new WeakMap<Element, Record<string, string>>()
-    const write = (element: HTMLElement, key: string, value: string) => {
+    const write = (element: Element, key: string, value: string) => {
       let values = written.get(element)
       if (!values) written.set(element, (values = {}))
       if (values[key] === value) return
       values[key] = value
-      element.style.setProperty(key, value)
+      ;(element as HTMLElement).style.setProperty(key, value)
     }
 
-    let tops: number[] = []
-    let target = 0
-    let frame = 0
-    let frozen = false
-    let settleTimer = 0
-    let railIndex = -1
-
-    const measure = () => {
+    const measure = (): Layout => {
       tops = markers.map(
         (marker) => marker.getBoundingClientRect().top + window.scrollY,
       )
-      for (const scene of scenes) {
-        scene.travel = scene.steps[0]?.parentElement?.clientHeight ?? 0
-        scene.markX = scene.marks.map((mark) => mark.offsetLeft)
-        scene.hidden = false
+      return {
+        reduced: reducedQuery.matches,
+        lineTravel: LINE_TRAVEL,
+        scenes: scenes.map(({ from, to, lines }) => ({
+          from,
+          to,
+          lines: lines.length,
+        })),
+        values: values
+          ? {
+              from: values.from,
+              count: values.steps.length,
+              travel: values.steps[0]?.parentElement?.clientHeight ?? 0,
+              markX: values.marks.map((mark) => mark.offsetLeft),
+            }
+          : null,
+        // Folded away for the form, the panel keeps the size it had, so its
+        // picture is in place the moment it opens again.
+        panel: panel.measure() ?? layout?.panel ?? null,
       }
-      written = new WeakMap()
     }
     const read = () => progressAt(window.scrollY, tops)
 
-    const apply = (progress: number) => {
-      const reduced = reducedQuery.matches
+    /** Draws a frame by script: where there are no scroll timelines. */
+    const draw = (progress: number) => {
+      if (!layout) return
+      const segment = clamp(Math.floor(progress), 0, SCENE_COUNT - 1)
+      const styles = frameAt(SCRIPT, layout, segment, progress - segment)
+      for (const [key, style] of Object.entries(styles)) {
+        const element = targets.get(key)
+        if (!element) continue
+        const { opacity, transform } = css(style)
+        if (opacity !== undefined) write(element, "opacity", opacity)
+        if (transform !== undefined) write(element, "transform", transform)
+      }
+    }
+
+    /**
+     * Samples the frames into one animation per element on the scroll
+     * timeline, from the first snap point to the last.
+     */
+    const animate = () => {
+      if (!timeline || !layout) return
+      for (const animation of animations) animation.cancel()
+      const first = tops[0] ?? 0
+      const last = tops[SNAPS - 1] ?? first
+      const span = last - first || 1
+      const at = (segment: number, t: number) => {
+        const from = tops[segment] ?? first
+        const to = tops[segment + 1] ?? from
+        return (from + (to - from) * t - first) / span
+      }
+      const measured = layout
+      const series = sample(
+        (segment, t) => frameAt(SCRIPT, measured, segment, t),
+        SCENE_COUNT,
+        STEPS,
+        at,
+        // Reduced motion cuts halfway: both sides of the cut.
+        measured.reduced ? [...KINKS, 0.5 - 1e-6] : KINKS,
+      )
+      animations = []
+      for (const [key, entry] of series) {
+        const element = targets.get(key)
+        if (!element) continue
+        animations.push(
+          element.animate(keyframes(simplify(entry)), {
+            timeline,
+            fill: "both",
+            rangeStart: `${first}px`,
+            rangeEnd: `${last}px`,
+          } as KeyframeAnimationOptions),
+        )
+      }
+    }
+
+    /** Measures, and remakes the animations when anything changed. */
+    const build = () => {
+      window.clearTimeout(buildTimer)
+      buildTimer = 0
+      if (frozen) {
+        stale = true
+        return
+      }
+      builtAt = performance.now()
+      const next = measure()
+      const key = JSON.stringify([tops, next])
+      layout = next
+      target = read()
+      if (key !== signature) {
+        signature = key
+        written = new WeakMap()
+        if (timeline) animate()
+      }
+      if (!timeline) draw(target)
+      mark(target)
+    }
+    const requestBuild = () => {
+      if (buildTimer) return
+      const wait = Math.max(0, REBUILD_EVERY - (performance.now() - builtAt))
+      buildTimer = window.setTimeout(build, wait)
+    }
+
+    /** The scene-level switches: which scene is on, the progress squares. */
+    const mark = (progress: number) => {
       for (const scene of scenes) {
         const offset = offsetFrom(progress, scene.from, scene.to, SCENE_COUNT)
         const current = Math.abs(offset) < 0.5
@@ -143,28 +297,17 @@ export function Stage({
           scene.current = current
           scene.element.toggleAttribute("data-current", current)
         }
-        // A scene that stays off screen costs nothing.
-        const hidden = Math.abs(offset) >= 1
-        if (hidden && scene.hidden) continue
-        scene.hidden = hidden
-        scene.lines.forEach((line, index) => {
-          const { opacity, shift } = lineFrame(
-            offset,
-            index,
-            scene.lines.length,
-          )
-          write(line, "opacity", opacity.toFixed(3))
-          write(
-            line,
-            "transform",
-            reduced
-              ? "none"
-              : `translate3d(0, ${(shift * LINE_TRAVEL).toFixed(2)}px, 0)`,
-          )
-        })
-        if (scene.steps.length) applySteps(scene, progress, reduced)
       }
-
+      if (values) {
+        const position = clamp(
+          progress - values.from,
+          0,
+          values.steps.length - 1,
+        )
+        values.steps.forEach((step, index) =>
+          step.toggleAttribute("aria-current", Math.round(position) === index),
+        )
+      }
       const nearest = Math.round(progress) % SCENE_COUNT
       if (nearest !== railIndex) {
         railIndex = nearest
@@ -173,85 +316,23 @@ export function Stage({
         )
         registerRef.current?.toggleAttribute("data-hidden", nearest === 0)
       }
-      panelRef.current?.render(progress, reduced)
     }
 
-    /** The values: the statements roll, the highlight slides along the index. */
-    const applySteps = (
-      scene: SceneParts,
-      progress: number,
-      reduced: boolean,
-    ) => {
-      const count = scene.steps.length
-      const position = clamp(progress - scene.from, 0, count - 1)
-      scene.steps.forEach((step, index) => {
-        let offset = clamp(position - index, -1, 1)
-        // Arriving and leaving belong to the whole block.
-        if (index === 0 && offset < 0) offset = 0
-        if (index === count - 1 && offset > 0) offset = 0
-        const { opacity, shift } = reduced
-          ? lineFrame(offset, 0, 1)
-          : rollFrame(offset)
-        write(step, "opacity", opacity.toFixed(3))
-        write(
-          step,
-          "transform",
-          reduced
-            ? "none"
-            : `translate3d(0, ${(shift * scene.travel).toFixed(2)}px, 0)`,
-        )
-        step.toggleAttribute("aria-current", Math.abs(offset) < 0.5)
-      })
-      const index = Math.floor(position)
-      const eased = reduced
-        ? Math.round(position - index)
-        : scrub(position - index)
-      const next = Math.min(index + 1, count - 1)
-      scene.marks.forEach((mark, k) => {
-        const distance = Math.abs(index + eased - k)
-        write(
-          mark,
-          "opacity",
-          (0.32 + 0.68 * (1 - Math.min(distance, 1))).toFixed(3),
-        )
-      })
-      const highlight = scene.highlight
-      const fromX = scene.markX[index]
-      const toX = scene.markX[next]
-      if (highlight && fromX !== undefined && toX !== undefined) {
-        const x = fromX + (toX - fromX) * eased
-        write(highlight, "transform", `translate3d(${x.toFixed(2)}px, 0, 0)`)
-        const a = scene.marks[index]?.dataset.colour ?? ""
-        const b = scene.marks[next]?.dataset.colour ?? ""
-        write(
-          highlight,
-          "background-color",
-          a === b || eased <= 0
-            ? a
-            : eased >= 1
-              ? b
-              : `color-mix(in oklab, ${a} ${((1 - eased) * 100).toFixed(1)}%, ${b})`,
-        )
-      }
-    }
-
-    // Drawn once a frame at exactly the scroll's position. The scroll is
-    // already smooth (the browser plays a snap as a smooth scroll), so any
-    // smoothing here only trails it: 45 ms of lag left the page drifting for
-    // 100 ms after the scroll had stopped.
+    // The script driver draws once a frame at exactly the scroll's position.
     const tick = () => {
       frame = 0
-      apply(target)
+      draw(target)
     }
     const schedule = () => {
-      if (frame) return
+      if (timeline || frame) return
       frame = requestAnimationFrame(tick)
     }
     const jumpTo = (progress: number) => {
       target = progress
       cancelAnimationFrame(frame)
       frame = 0
-      apply(target)
+      if (!timeline) draw(target)
+      mark(target)
     }
 
     /** At rest on the last snap point: back to the top, which looks the same. */
@@ -265,18 +346,10 @@ export function Stage({
     const onScroll = () => {
       if (frozen) return
       target = read()
+      mark(target)
       schedule()
       window.clearTimeout(settleTimer)
       settleTimer = window.setTimeout(settle, 180)
-    }
-
-    // A phone's bars resize the window mid-scroll: measure again. The snap
-    // points are small-viewport tall, so the position barely moves.
-    const onResize = () => {
-      measure()
-      if (frozen) return
-      target = read()
-      schedule()
     }
 
     // Phones: a field's keyboard scrolls the page to show it. While a field
@@ -286,14 +359,23 @@ export function Stage({
       if (frozen) return
       frozen = true
       html.setAttribute("data-frozen", "")
+      for (const animation of animations) animation.pause()
     }
     const thaw = () => {
       if (!frozen) return
       frozen = false
       html.removeAttribute("data-frozen")
-      measure()
       const scene = Math.round(target)
+      if (stale) {
+        stale = false
+        build()
+      } else {
+        tops = markers.map(
+          (marker) => marker.getBoundingClientRect().top + window.scrollY,
+        )
+      }
       window.scrollTo({ top: tops[scene] ?? 0, behavior: "instant" })
+      for (const animation of animations) animation.play()
       jumpTo(scene)
       settle()
     }
@@ -344,7 +426,6 @@ export function Stage({
      */
     const goTo = (scene: number, focusEmail = false) => {
       if (frozen) thaw()
-      measure()
       let destination = scene
       if (scene === 0 && SNAPS - 1 - target < target) destination = SNAPS - 1
       const top = tops[destination] ?? 0
@@ -388,27 +469,37 @@ export function Stage({
       goTo(scene, scene === 0 && link.tagName === "A")
     }
 
-    measure()
-    jumpTo(read())
+    build()
     html.setAttribute("data-engine", "")
+
+    // Sizes change with the window, the fonts, a phone's bars and the band
+    // folding for the form: measure again, and remake what changed.
+    const observer = new ResizeObserver(requestBuild)
+    observer.observe(stage)
+    const panelRoot = targets.get("panel")
+    if (panelRoot) observer.observe(panelRoot)
+    void document.fonts?.ready.then(requestBuild)
 
     window.addEventListener("scroll", onScroll, { passive: true })
     window.addEventListener("scrollend", settle)
-    window.addEventListener("resize", onResize)
+    window.addEventListener("resize", requestBuild)
     stage.addEventListener("focusin", onFocusIn)
     stage.addEventListener("focusout", onFocusOut)
     stage.addEventListener("click", onClick)
-    reducedQuery.addEventListener("change", onResize)
+    reducedQuery.addEventListener("change", requestBuild)
     return () => {
+      observer.disconnect()
       window.removeEventListener("scroll", onScroll)
       window.removeEventListener("scrollend", settle)
-      window.removeEventListener("resize", onResize)
+      window.removeEventListener("resize", requestBuild)
       stage.removeEventListener("focusin", onFocusIn)
       stage.removeEventListener("focusout", onFocusOut)
       stage.removeEventListener("click", onClick)
-      reducedQuery.removeEventListener("change", onResize)
+      reducedQuery.removeEventListener("change", requestBuild)
+      for (const animation of animations) animation.cancel()
       cancelAnimationFrame(frame)
       window.clearTimeout(settleTimer)
+      window.clearTimeout(buildTimer)
       html.removeAttribute("data-engine")
       html.removeAttribute("data-frozen")
     }
