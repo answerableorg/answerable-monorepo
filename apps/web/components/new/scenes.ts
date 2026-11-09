@@ -20,7 +20,11 @@ export const HERO = {
   alt: "An illustration of a practice at work around a long table: colleagues measure and label a white architectural model, one signs a drawing, two review a design on a laptop, and two pass a sealed letter.",
 }
 
-/** The brand's four highlights, the colours of the zoom fields. */
+/**
+ * The brand's four highlights: each value's number, its square on the rail
+ * and the index highlight. The image panel itself stays white round its
+ * windows, with no colour behind the picture.
+ */
 const SKY = "var(--highlight-1)"
 const SAND = "var(--highlight-2)"
 const GREEN = "var(--highlight-3)"
@@ -30,7 +34,7 @@ const WHITE = "#fff"
 
 export type Value = {
   text: string
-  /** The field round the window, and the value's number. */
+  /** The value's number, its rail square and its index highlight. */
   colour: string
   /** The detail of the illustration that stands for it. */
   window: Window
@@ -80,11 +84,11 @@ export const VALUES: readonly Value[] = [
 export const VALUES_FROM = 2
 
 export type PanelState = {
-  /** The colour round the window; none while the picture is open. */
+  /** The colour round the window (white); none while the picture is open. */
   field: string | null
   /** The comma window; none for the whole picture. */
   window: Window | null
-  /** The Answerable AP badge in the corner. */
+  /** The Answerable AP badge in the corner: only beside the form. */
   badge: boolean
   /** The two portraits over the picture. */
   team: boolean
@@ -99,18 +103,18 @@ const OPEN: PanelState = {
 
 /** One per scene, by index. */
 export const PANEL_STATES: readonly PanelState[] = [
-  // Hero: the whole picture and the badge on its sky.
+  // Hero: the whole picture, and the badge beside the form.
   { ...OPEN, badge: true },
   // Programme: white closes in to the model, the work itself.
   {
+    ...OPEN,
     field: WHITE,
     window: { focus: [556, 786], span: 760, size: 1.75, shape: "comma" },
-    badge: true,
-    team: false,
   },
+  // The values: a window on each detail, on white.
   ...VALUES.map((value) => ({
     ...OPEN,
-    field: value.colour,
+    field: WHITE,
     window: value.window,
   })),
   // People: the picture opens again under the portraits.
@@ -132,6 +136,7 @@ export const WINDOW_LAYOUTS = {
 export type Person = {
   name: string
   line: string
+  /** The square beside the name in the people scene. */
   colour: string
   /** The comma turned over, tail up: an opening quote mark. */
   turned: boolean

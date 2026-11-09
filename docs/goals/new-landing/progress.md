@@ -81,3 +81,10 @@
 - WebKit's main thread slowed with keyframe count: 3,300 keyframes gave 80 to 92 frames over 20 ms across nine scenes, 1,800 gave 0 to 10, as the live page does. Hence 32 samples and the looser tolerance.
 - Measured against live (www, the script driver): pixel-identical at rest bar text antialiasing (0 to 0.4% desktop, up to 1.7% phone); script fallback 0% different; WebKit 0 to 0.1%. With the main thread blocked 600 ms mid-transition, live's panel moved in 0 of 23 frames and jumped after; the new one moved in 14 of 22. No dropped frames on real gestures in Chromium; paint on the main thread 32 → 3 ms (phone at 4×: 102 → 2). The phone form freezes and thaws with the animations paused and resumed; rail, loop and reduced motion as before.
 - Gates: typecheck 0, lint 0, web test 169 pass, build 0 (`/new` static), knip clean.
+
+## 2026-11-09, a white panel
+
+- Owner: no colour behind the picture while scrolling; the Answerable AP stamp only on the first scene, beside the form.
+- Every value's field is white, as the programme's is, and the portraits sit on white halves (their comma tails keep the photographs' own grey and black). Neighbouring scenes in one field colour now share a layer, so the panel has one white field and one tail cover instead of seven of each. The stamp shows on the hero only, fading out over the first scroll and back in on the loop.
+- Left as they were, not asked: the values' index highlight and rail squares in the four colours, and the people's coloured squares beside their names.
+- Checked at 13 positions on desktop and phone: white panel throughout, stamp opacity 1 at the hero and 0 from the programme on, no console errors. Gates: web test 171 pass, typecheck, lint, build, knip clean.

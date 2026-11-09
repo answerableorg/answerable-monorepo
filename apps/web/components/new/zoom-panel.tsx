@@ -72,10 +72,8 @@ const HEAD_SHARE = COMMA.head.h / (COMMA.head.h + COMMA.band.h)
 const COLUMN_QUERY =
   "(min-width: 64rem), (min-width: 40rem) and (min-aspect-ratio: 4/3)"
 
-/** One colour layer per scene with a field, in scene order. */
-const FIELDS = fieldLayers(PANEL_STATES).map(
-  (scene) => PANEL_STATES[scene]!.field!,
-)
+/** One colour layer per run of scenes in one field colour, in scene order. */
+const FIELDS = fieldLayers(PANEL_STATES).map((layer) => layer.colour)
 
 /** The panel's elements, set by their refs. */
 type Parts = {
@@ -312,7 +310,7 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
 }
 
 /**
- * One person on their own colour, in the logo's comma: the photograph in its
+ * One person on white, in the logo's comma: the photograph in its
  * head, the tail in the photograph's own edge tone. Keir's comma is turned
  * over and Sadie's is not, so the pair reads as quote marks. The band puts
  * the two side by side, the commas centred; the column one above the other,
@@ -332,7 +330,7 @@ function Portrait({
     <div
       ref={ref}
       className="[container-type:size] relative overflow-hidden will-change-[opacity]"
-      style={{ backgroundColor: person.colour, opacity: 0 }}
+      style={{ backgroundColor: "#fff", opacity: 0 }}
     >
       <div
         className={cn(

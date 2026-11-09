@@ -97,9 +97,22 @@ export type Layout = {
   panel: { size: Size; column: boolean; margin: number } | null
 }
 
-/** The scenes that have a field, in order: one colour layer each. */
-export function fieldLayers(states: readonly PanelState[]): number[] {
-  return states.flatMap((state, index) => (state.field ? [index] : []))
+/** A solid colour layer behind the window: one per run of scenes in it. */
+export type FieldLayer = { colour: string; from: number; to: number }
+
+/**
+ * The field's layers, in scene order: neighbouring scenes in one colour
+ * share a layer, so a colour that does not change is not faded over itself.
+ */
+export function fieldLayers(states: readonly PanelState[]): FieldLayer[] {
+  const layers: FieldLayer[] = []
+  states.forEach(({ field }, index) => {
+    if (!field) return
+    const last = layers.at(-1)
+    if (last && last.to === index - 1 && last.colour === field) last.to = index
+    else layers.push({ colour: field, from: index, to: index })
+  })
+  return layers
 }
 
 /**
@@ -261,11 +274,13 @@ function panelFrame(
     s: g.scale / k,
   }
 
-  // The field: each scene with one has its own solid layer, the later above
-  // the earlier. Arriving at a field, its layer fades in over the last
-  // field's, or is there at once behind an open picture.
-  fieldLayers(states).forEach((scene, layer) => {
-    const value = scene === next ? (a.field ? e : 1) : scene === index ? 1 : 0
+  // The field: a solid layer per run of one colour, the later above the
+  // earlier. Arriving at a new colour, its layer fades in over the last
+  // one's, or is there at once behind an open picture.
+  fieldLayers(states).forEach(({ from, to }, layer) => {
+    const here = index >= from && index <= to
+    const coming = next >= from && next <= to
+    const value = here ? 1 : coming ? (a.field ? e : 1) : 0
     frame[`field:${layer}`] = { opacity: value }
     frame[`cover:${layer}`] = { opacity: value }
   })

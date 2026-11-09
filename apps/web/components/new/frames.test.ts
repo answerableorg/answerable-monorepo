@@ -131,15 +131,47 @@ describe("unit: the stage's frames", () => {
   test("at rest on a scene with a field, its colour is the top layer shown", () => {
     const layers = fieldLayers(PANEL_STATES)
     for (let scene = 0; scene < SCENE_COUNT; scene++) {
-      if (!PANEL_STATES[scene]!.field) continue
+      const field = PANEL_STATES[scene]!.field
+      if (!field) continue
       const frame = at(scene)
       const top = layers.findLastIndex(
         (_, layer) => frame[`field:${layer}`]!.opacity === 1,
       )
-      expect(layers[top]).toBe(scene)
+      expect(layers[top]!.colour).toBe(field)
+      expect(scene).toBeGreaterThanOrEqual(layers[top]!.from)
+      expect(scene).toBeLessThanOrEqual(layers[top]!.to)
       // The tail's covers match the field.
       layers.forEach((_, layer) =>
         expect(frame[`cover:${layer}`]).toEqual(frame[`field:${layer}`]!),
+      )
+    }
+  })
+
+  test("scenes in one colour share a layer, and a new colour fades in over it", () => {
+    const plain = { window: null, badge: false, team: false }
+    const states = [
+      { ...plain, field: null },
+      { ...plain, field: "white" },
+      { ...plain, field: "white" },
+      { ...plain, field: "green" },
+      { ...plain, field: null },
+      { ...plain, field: "white" },
+    ]
+    expect(fieldLayers(states)).toEqual([
+      { colour: "white", from: 1, to: 2 },
+      { colour: "green", from: 3, to: 3 },
+      { colour: "white", from: 5, to: 5 },
+    ])
+    // The page's own fields: all white, so one layer.
+    expect(fieldLayers(PANEL_STATES)).toEqual([
+      { colour: "#fff", from: 1, to: VALUES.length + 1 },
+    ])
+  })
+
+  test("the badge shows only on the first scene, beside the form", () => {
+    for (let scene = 0; scene <= SCENE_COUNT; scene++) {
+      expect(at(scene).badge!.opacity).toBe(
+        scene === 0 || scene === SCENE_COUNT ? 1 : 0,
       )
     }
   })

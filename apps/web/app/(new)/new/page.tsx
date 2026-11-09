@@ -176,7 +176,7 @@ export default function Page() {
           <ul className="cols:mt-6 cols:gap-4 mt-4 flex flex-col gap-3">
             {PEOPLE.map((person) => (
               <li key={person.name} data-line className="flex gap-3">
-                {/* The colour of the person's portrait on the image. */}
+                {/* Each person's own square. */}
                 <span
                   aria-hidden="true"
                   className="mt-2 size-2 shrink-0"
