@@ -19,6 +19,7 @@ export async function joinFoundingCohort(
   return submitWaitlist({
     email: String(formData.get("email") ?? ""),
     country: String(formData.get("country") ?? ""),
+    fullName: String(formData.get("fullName") ?? ""),
     business: {
       name: String(formData.get("businessName") ?? ""),
       headcount: String(formData.get("businessHeadcount") ?? ""),

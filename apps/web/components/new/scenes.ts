@@ -336,7 +336,9 @@ export const NOTES: readonly Note[] = [
   },
   {
     scenes: [VALUES_FROM + 1],
-    marks: [{ kind: "axis", from: [1450, 1494], to: [1920, 1443], extend: 60 }],
+    marks: [
+      { kind: "axis", from: [1450, 1496.5], to: [1920, 1451], extend: 60 },
+    ],
   },
   {
     scenes: [VALUES_FROM + 2],
@@ -365,10 +367,10 @@ export const NOTES: readonly Note[] = [
       {
         kind: "outline",
         points: [
-          [4218, 708],
-          [4372, 730],
-          [4357, 818],
-          [4208, 797],
+          [4218, 705.5],
+          [4371, 726],
+          [4359.5, 819],
+          [4205.5, 804],
         ],
       },
       { kind: "ring", at: [4287, 763], r: 26 },

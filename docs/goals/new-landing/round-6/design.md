@@ -11,7 +11,7 @@ the painting.** Nothing is decoration for its own sake.
 | Shutters | Four white sheets framing a rectangle: the square on a detail, or the whole lattice for a whole painting | slide |
 | Portraits | Two white halves, the commas on them, on the lattice | fade |
 | Lattice | Square modules in sky, across the frame | never |
-| Frame | The lattice's outline and the strip's, in ink; ticks at every module; zone labels (numbers across the top, letters down the left, no I or O) | never |
+| Frame | The lattice's outline and the strip's, in ink; ticks at every module; zone labels (numbers across the top, letters down the left, the whole alphabet since round 7) | never |
 | Rules | The picture's four edges continued across the lattice, in ink | with the shutters |
 | Notes | One small drawing per scene: centre lines, construction lines, outlines, circles | glued to the painting, fade |
 | Strip | Sheet number and scene name on the left; the key plan of the studio on the right | fade; the key plan's window slides |

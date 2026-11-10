@@ -156,6 +156,7 @@ export function Stage({
     let buildTimer = 0
     let builtAt = 0
     let railIndex = -1
+    let valueIndex = -1
 
     // The script driver sets a style only when it changes.
     let written = new WeakMap<Element, Record<string, string>>()
@@ -294,9 +295,19 @@ export function Stage({
           0,
           values.steps.length - 1,
         )
+        const value = Math.round(position)
         values.steps.forEach((step, index) =>
-          step.toggleAttribute("aria-current", Math.round(position) === index),
+          step.toggleAttribute("aria-current", value === index),
         )
+        // The index's buttons say which value is on.
+        if (value !== valueIndex) {
+          valueIndex = value
+          values.marks.forEach((number, index) => {
+            const button = number.closest("button")
+            if (index === value) button?.setAttribute("aria-current", "true")
+            else button?.removeAttribute("aria-current")
+          })
+        }
       }
       const nearest = Math.round(progress) % SCENE_COUNT
       if (nearest !== railIndex) {
@@ -453,7 +464,8 @@ export function Stage({
       })
     }
     // Links and buttons to a scene (`data-go`): the header's link, the join
-    // scene's and the rail. A link to the hero puts the cursor in the form.
+    // scene's, the rail and the values' numbers. A link to the hero puts the
+    // cursor in the form.
     const onClick = (event: globalThis.MouseEvent) => {
       const link = (event.target as Element).closest<HTMLElement>("[data-go]")
       if (!link || event.defaultPrevented || event.metaKey || event.ctrlKey) {

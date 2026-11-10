@@ -24,9 +24,10 @@ function harness(
     email: string,
     country = "GB",
     business?: { name: string; headcount: string },
+    fullName?: string,
   ) =>
     submitWaitlist(
-      { email, country, business },
+      { email, country, business, fullName },
       {
         env,
         log,
@@ -43,6 +44,7 @@ function harness(
 }
 const success = { status: "success", email: "a@b.com" } as const
 const acme = { name: "Acme Architects", headcount: "11–50" }
+const ada = "Ada Lovelace"
 const failed = { status: "error", message: MESSAGES.failed } as const
 
 describe("unit: waitlist", () => {
@@ -95,6 +97,56 @@ describe("unit: waitlist", () => {
     })
     expect(h.opened).toEqual([])
   })
+  test("requires the full name where the form asks for it", async () => {
+    const h = harness()
+    for (const fullName of ["", "  "]) {
+      expect(await h.submit("a@b.com", "GB", acme, fullName)).toEqual({
+        status: "error",
+        errors: { fullName: MESSAGES.fullName },
+      })
+    }
+    expect(h.opened).toEqual([])
+  })
+  test("collects every error of the founding cohort's form", async () => {
+    const h = harness()
+    expect(await h.submit("", "", { name: "", headcount: "" }, "")).toEqual({
+      status: "error",
+      errors: {
+        email: MESSAGES.empty,
+        country: MESSAGES.country,
+        fullName: MESSAGES.fullName,
+        businessName: MESSAGES.businessName,
+        businessHeadcount: MESSAGES.businessHeadcount,
+      },
+    })
+    expect(h.opened).toEqual([])
+  })
+  test("takes a 200-character full name and rejects 201", async () => {
+    const h = harness()
+    expect(await h.submit("a@b.com", "GB", acme, "x".repeat(201))).toEqual({
+      status: "error",
+      errors: { fullName: MESSAGES.fullNameLong },
+    })
+    expect(h.opened).toEqual([])
+    expect(await h.submit("a@b.com", "GB", acme, "x".repeat(200))).toEqual(
+      success,
+    )
+  })
+  test("stores the trimmed full name", async () => {
+    const h = harness()
+    expect(await h.submit("a@b.com", "GB", acme, "  Ada Lovelace ")).toEqual(
+      success,
+    )
+    expect(h.rows[0].full_name).toBe(ada)
+    expect(h.rows[0].business_name).toBe("Acme Architects")
+  })
+  test("a signup that does not ask keeps the full name", async () => {
+    const h = harness()
+    await h.submit("a@b.com", "GB", acme, ada)
+    expect(await h.submit("a@b.com", "FR")).toEqual(success)
+    expect(h.rows[0].country_code).toBe("FR")
+    expect(h.rows[0].full_name).toBe(ada)
+  })
   test("rejects a headcount outside the bands", async () => {
     const h = harness()
     for (const headcount of ["12", "1-10", "=1+1"]) {
@@ -134,10 +186,14 @@ describe("unit: waitlist", () => {
     expect(h.rows[0].business_name).toBe("Acme Architects")
     expect(h.rows[0].business_headcount).toBe("11–50")
   })
-  test("never logs the business name", async () => {
+  test("never logs the business name or the full name", async () => {
     const h = harness({ fail: { loadHeaderRow: new Error("boom") } })
-    expect(await h.submit("a@b.com", "GB", acme)).toEqual(failed)
+    expect(await h.submit("a@b.com", "GB", acme, ada)).toEqual(failed)
     expect(h.lines("error").join()).not.toContain("Acme")
+    expect(h.lines("error").join()).not.toContain("Ada")
+    const quiet = harness(undefined, { NODE_ENV: "development" })
+    expect(await quiet.submit("a@b.com", "GB", acme, ada)).toEqual(success)
+    expect(quiet.lines("info").join()).not.toContain("Ada")
   })
   test("normalises the country and stores its name", async () => {
     const h = harness()
@@ -151,7 +207,7 @@ describe("unit: waitlist", () => {
     })
     expect(await h.submit("a@b.com")).toEqual(success)
     expect(h.lines("info")).toEqual([
-      '[waitlist] sheets_header_extended {"email":"a@b.com","columns":"country_code,country_name,business_name,business_headcount"}',
+      '[waitlist] sheets_header_extended {"email":"a@b.com","columns":"country_code,country_name,business_name,business_headcount,full_name"}',
     ])
   })
   test("stores trimmed lowercase addresses", async () => {

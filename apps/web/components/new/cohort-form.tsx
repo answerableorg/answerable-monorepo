@@ -32,10 +32,11 @@ const initialState: WaitlistState = { status: "idle" }
 
 /**
  * The founding cohort's form, in two steps: the work email first, then the
- * practice. Both steps post together to `joinFoundingCohort`, which requires
- * every field. The second step shows only once the address looks right, and
- * marks its scene `data-form-step="2"` so the hero can make room. Without the
- * stage script every field shows at once, and the form posts as it is.
+ * person and the practice. Both steps post together to `joinFoundingCohort`,
+ * which requires every field. The second step shows only once the address
+ * looks right, and marks its scene `data-form-step="2"` so the hero can make
+ * room. Without the stage script every field shows at once, and the form
+ * posts as it is.
  */
 export function CohortForm() {
   const [state, formAction, pending] = useActionState(
@@ -143,14 +144,20 @@ export function CohortForm() {
             : "animate-in fade-in-0 slide-in-from-top-2 duration-200 ease-out motion-reduce:animate-none",
         )}
       >
-        <Field name="businessName" className="sm:col-span-2">
-          <FieldLabel>Business name</FieldLabel>
+        <Field name="fullName">
+          <FieldLabel>Full name</FieldLabel>
           <Input
             ref={nameRef}
             type="text"
-            name="businessName"
-            autoComplete="organization"
+            name="fullName"
+            autoComplete="name"
+            autoCapitalize="words"
           />
+          <FieldError />
+        </Field>
+        <Field name="businessName">
+          <FieldLabel>Business name</FieldLabel>
+          <Input type="text" name="businessName" autoComplete="organization" />
           <FieldError />
         </Field>
         <Field name="businessHeadcount">
@@ -194,7 +201,7 @@ export function CohortForm() {
           {state.message}
         </p>
       )}
-      <p className="text-muted-foreground text-sm/6 [@media(height<30rem)]:group-data-[form-step=2]/scene:hidden">
+      <p className="text-muted-foreground [@media(height<35rem)]:band:group-data-[form-step=2]/scene:hidden text-sm/6 [@media(height<30rem)]:group-data-[form-step=2]/scene:hidden">
         Registering interest does not reserve a place or commit you to enrol.
       </p>
     </Form>

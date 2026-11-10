@@ -115,8 +115,8 @@ const KEYPLAN_DOT = 3
 export const ZONE_FONT = 9
 const CAP = 0.7
 
-/** Zone letters, as on a drawing sheet: no I and no O. */
-const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+/** Zone letters: the whole alphabet, I and O included. */
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 function zoneLetter(row: number): string {
   const last = LETTERS[row % LETTERS.length]!
   return row < LETTERS.length

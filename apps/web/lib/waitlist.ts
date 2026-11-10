@@ -13,10 +13,15 @@ export type WaitlistInput = {
   email: string
   country: string
   /** Required where the form asks for it, the founding cohort's. */
+  fullName?: string
+  /** Required where the form asks for it, the founding cohort's. */
   business?: { name: string; headcount: string }
 }
 type WaitlistErrors = Partial<
-  Record<"email" | "country" | "businessName" | "businessHeadcount", string>
+  Record<
+    "email" | "country" | "fullName" | "businessName" | "businessHeadcount",
+    string
+  >
 >
 
 export type WaitlistState =
@@ -25,6 +30,7 @@ export type WaitlistState =
   | { status: "success"; email: string }
 
 const EMAIL_MAX_LENGTH = 254
+const FULL_NAME_MAX_LENGTH = 200
 const BUSINESS_NAME_MAX_LENGTH = 200
 const ERROR_MESSAGE_LIMIT = 500
 
@@ -54,6 +60,13 @@ export async function submitWaitlist(
   }
   const country = findCountry(input.country)
   if (!country) errors.country = MESSAGES.country
+  const fullName = input.fullName?.trim()
+  if (input.fullName !== undefined) {
+    if (!fullName) errors.fullName = MESSAGES.fullName
+    else if (fullName.length > FULL_NAME_MAX_LENGTH) {
+      errors.fullName = MESSAGES.fullNameLong
+    }
+  }
   const businessName = input.business?.name.trim()
   if (input.business) {
     if (!businessName) errors.businessName = MESSAGES.businessName
@@ -81,6 +94,7 @@ export async function submitWaitlist(
       email,
       countryCode: country.code,
       countryName: country.name,
+      fullName,
       businessName,
       businessHeadcount: input.business?.headcount,
     })

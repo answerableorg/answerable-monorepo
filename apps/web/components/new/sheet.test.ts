@@ -81,7 +81,7 @@ describe("the sheet's plan", () => {
     const zones = (name: string) => sheetPlan(PANELS[name]!, SCRIPT).zones
     expect(zones("laptop").map((zone) => zone.text)).toEqual([
       ..."1 2 3 4 5 6 7 8 9 10 11 12 13".split(" "),
-      ..."ABCDEFGHJKLMN",
+      ..."ABCDEFGHIJKLM",
     ])
     expect(zones("large")).toHaveLength(33)
     for (const name of ["phone", "small", "tablet", "short"]) {

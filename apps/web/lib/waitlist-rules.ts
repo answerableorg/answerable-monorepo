@@ -5,6 +5,8 @@
  */
 export const MESSAGES = {
   country: "Please select your country.",
+  fullName: "Please enter your full name.",
+  fullNameLong: "Please shorten your full name to 200 characters.",
   businessName: "Please enter your business name.",
   businessNameLong: "Please shorten your business name to 200 characters.",
   businessHeadcount: "Please select your business headcount.",

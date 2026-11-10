@@ -40,8 +40,10 @@ const MUTED = "text-muted-foreground"
 const KICKER = "text-sm/6 font-bold"
 /** A closing line dropped where the screen is short of room. */
 const SPARE = "[@media(height<50rem)]:band:hidden [@media(height<30rem)]:hidden"
-/** In the form's second step a short screen keeps only the form. */
-const FORM_ONLY = "[@media(height<30rem)]:group-data-[form-step=2]/scene:hidden"
+/** In the form's second step a short screen keeps only the form: five fields
+    under each other on a phone, so sooner there. */
+const FORM_ONLY =
+  "[@media(height<30rem)]:group-data-[form-step=2]/scene:hidden [@media(height<42rem)]:band:group-data-[form-step=2]/scene:hidden"
 
 export default function Page() {
   return (
@@ -69,7 +71,7 @@ export default function Page() {
             className={cn(
               BODY,
               MUTED,
-              "band:group-data-[form-step=2]/scene:hidden [@media(height<37rem)]:band:hidden mt-3 lg:mt-4",
+              "band:group-data-[form-step=2]/scene:hidden [@media(height<37rem)]:band:hidden mt-3 lg:mt-4 [@media(height<40rem)]:group-data-[form-step=2]/scene:hidden",
               FORM_ONLY,
             )}
           >
@@ -78,7 +80,7 @@ export default function Page() {
           </p>
           <div
             data-line
-            className="mt-6 lg:mt-8 [@media(height<30rem)]:mt-4 [@media(height<30rem)]:group-data-[form-step=2]/scene:mt-0"
+            className="[@media(height<42rem)]:band:group-data-[form-step=2]/scene:mt-0 mt-6 lg:mt-8 [@media(height<30rem)]:mt-4 [@media(height<30rem)]:group-data-[form-step=2]/scene:mt-0"
           >
             <CohortForm />
           </div>
@@ -122,13 +124,19 @@ export default function Page() {
             </p>
           </div>
           {/* The index: a square of colour slides from number to number,
-              each value's colour a layer that fades in over the last. */}
+              each value's colour a layer that fades in over the last. Each
+              number is a button to its value. */}
           <div
             data-line
-            aria-hidden="true"
+            role="group"
+            aria-label="Go to a value"
             className="stage:flex relative mt-6 hidden gap-2"
           >
-            <span data-highlight className="absolute top-0 left-0 size-8">
+            <span
+              data-highlight
+              aria-hidden="true"
+              className="absolute top-0 left-0 size-8"
+            >
               {VALUES.map((value, index) => (
                 <span
                   key={value.text}
@@ -141,14 +149,24 @@ export default function Page() {
                 />
               ))}
             </span>
+            {/* The button is not positioned, so its number's place is read
+                against the row and its square on hover lies under the
+                highlight; its padding is room for a finger. */}
             {VALUES.map((value, index) => (
-              <span
+              <button
                 key={value.text}
-                data-mark
-                className="relative grid size-8 place-items-center text-sm font-black tabular-nums"
+                type="button"
+                data-go={VALUES_FROM + index}
+                aria-label={`Value ${index + 1}`}
+                className="hover:bg-foreground/5 focus-visible:outline-foreground -m-1 cursor-pointer bg-clip-content p-1 focus-visible:outline-2 focus-visible:-outline-offset-4"
               >
-                {index + 1}
-              </span>
+                <span
+                  data-mark
+                  className="relative grid size-8 place-items-center text-sm font-black tabular-nums"
+                >
+                  {index + 1}
+                </span>
+              </button>
             ))}
           </div>
           <ol
