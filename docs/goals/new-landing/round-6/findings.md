@@ -93,3 +93,71 @@ Approximate, from 1:1 crops; each is checked by overlay before it ships.
 
 So the lattice is static (never animated), the notes are small SVGs (each
 its content's bounding box, not the panel), and each fades alone.
+Round 6 adds one: **a large layer must not travel fast, even unseen** (see
+"A hidden painting's travel").
+
+## As built: what was measured (2026-11-10)
+
+On the production build, driven by Playwright (scratchpad `smooth6.mjs`,
+`hitch7.mjs`, `wrap6.mjs`). No real iPhone and no real trackpad.
+
+### Speed
+
+The stride went from a screen's height to 22rem (60svh under a finger).
+
+| Chromium 1728×937 | Before | After |
+| ----------------- | ------ | ----- |
+| A key or a rail click to the next scene | 510 ms | 283 ms |
+| Two wheel notches to the next scene | | 229 ms |
+
+WebKit takes about 183 ms for the same change.
+
+### Frames over every scene
+
+| Browser, screen | Keyframes | Frames over 20 ms | Over 33 ms | Worst |
+| --------------- | --------- | ----------------- | ---------- | ----- |
+| WebKit 1440×900 @2x | 1,671 | 4 | 0 | 23 ms |
+| WebKit 2560×1440 | 1,880 | 2 | 0 | 22 ms |
+| WebKit phone (stride 511 px) | 1,289 | 5 | 0 | 28 ms |
+| Chromium 1440×900 | 1,667 | none over 16.8 ms | | |
+| Chromium 2560×1440 | 1,895 | none over 16.8 ms | | |
+
+The tests hold the panel's shutters and paintings under 700 keyframes, the
+strip and key plan under 120 and the notes under 130.
+
+### A hidden painting's travel
+
+Entering the people scene hitched on the WebKit phone: worst frame and
+frames over 25 ms, five runs, **32/3, 66/1, 33/2, 24/0, 30/1**. The studio
+painting (6,000 px wide) was fading out and, in the same half second,
+travelling back to its first detail under the portraits. WebKit re-rasters
+a large layer that moves fast, whether it is seen or not.
+
+Now a large painting never travels fast (`waiting` in `frames.ts`): under
+the portraits it fades where it is, then goes back at one pace over the
+three scenes that do not show it, the loop included. Same five runs:
+**19/0, 19/0, 19/0, 20/0, 20/0**. Two tests pin it.
+
+### The loop's wrap
+
+The last snap wraps to the top once the scroll settles within two pixels of
+it (a phone's scroll rests a fraction of a pixel short, and never wrapped
+before). On the WebKit phone the wrap costs two frames of 33 to 47 ms, at
+rest, after the join scene has arrived (it was 60 to 252 ms before the fix
+above); on the WebKit desktop 19 to 20 ms. Switching snapping off round the
+wrap did not change it, so it is recorded and left.
+
+### Other modes
+
+- Reduced motion rests on each scene and cuts through the bare lattice.
+- Without JavaScript the page is a document with the meeting painting.
+- The splash opens onto the framed hero, already measured.
+- Seven screens (laptop, 2560×1440, tablet, portrait tablet, short window,
+  phone, small phone) at seven scenes each: every picture on the lattice,
+  the copy on one line.
+
+### A tool quirk, not the page
+
+A headless Chromium screenshot at 2560×1440 timed out once in about forty.
+The page's own frames at that size are 17 to 33 ms after a jump and the
+smoothness run shows none slow; a longer wait before the capture avoids it.

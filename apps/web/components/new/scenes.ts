@@ -6,6 +6,7 @@ import meeting from "@/assets/new/meeting.webp"
 import sadie from "@/assets/new/sadie.webp"
 import studio from "@/assets/new/studio.webp"
 import type { Script } from "@/components/new/frames"
+import type { Note } from "@/components/new/notes"
 import type { Point, Window, WindowLayout } from "@/lib/stage-math"
 
 /**
@@ -293,6 +294,105 @@ export const RAIL: readonly { label: string; colour: string }[] = [
   { label: "Join the founding cohort", colour: BLACK },
 ]
 
+/**
+ * What the sheet draws on each painting, in the painting's own pixels: a line
+ * that continues something painted (the pen, the rule, the pointing arm), an
+ * outline, a circle. The scenes of one note show one view of a painting; the
+ * hero and the last scene share theirs.
+ */
+export const NOTES: readonly Note[] = [
+  {
+    scenes: [0, 9],
+    marks: [
+      { kind: "ring", at: [3101, 582], r: 321 },
+      { kind: "axis", from: [2780, 582], to: [3422, 582], extend: 60 },
+      { kind: "axis", from: [3101, 261], to: [3101, 903], extend: 60 },
+    ],
+  },
+  {
+    scenes: [1],
+    marks: [
+      {
+        kind: "outline",
+        points: [
+          [1508, 2478],
+          [2914, 2600],
+          [2862, 3141],
+          [1438, 3026],
+        ],
+      },
+      // The lettering's baseline and its capitals' line.
+      { kind: "guide", from: [1400, 2779], to: [2980, 2924] },
+      { kind: "guide", from: [1400, 2658], to: [2980, 2817] },
+      { kind: "ring", at: [3293, 506], r: 256 },
+    ],
+  },
+  {
+    scenes: [VALUES_FROM],
+    marks: [
+      { kind: "axis", from: [925, 1772], to: [1081, 2001], extend: 40 },
+      { kind: "cross", at: [1081, 2001] },
+    ],
+  },
+  {
+    scenes: [VALUES_FROM + 1],
+    marks: [{ kind: "axis", from: [1450, 1494], to: [1920, 1443], extend: 60 }],
+  },
+  {
+    scenes: [VALUES_FROM + 2],
+    marks: [
+      { kind: "axis", from: [2605, 357], to: [2950, 567], extend: 25 },
+      { kind: "cross", at: [2605, 357] },
+    ],
+  },
+  {
+    scenes: [VALUES_FROM + 3],
+    marks: [
+      {
+        kind: "outline",
+        points: [
+          [4222, 1742],
+          [4553, 1748],
+          [4550, 1858],
+          [4217, 1850],
+        ],
+      },
+    ],
+  },
+  {
+    scenes: [VALUES_FROM + 4],
+    marks: [
+      {
+        kind: "outline",
+        points: [
+          [4218, 708],
+          [4372, 730],
+          [4357, 818],
+          [4208, 797],
+        ],
+      },
+      { kind: "ring", at: [4287, 763], r: 26 },
+    ],
+  },
+  {
+    scenes: [VALUES_FROM + 5],
+    marks: [
+      {
+        kind: "outline",
+        points: [
+          [5402, 851],
+          [5550, 851],
+          [5588, 915],
+          [5592, 1000],
+          [5370, 1000],
+          [5373, 915],
+        ],
+      },
+      { kind: "axis", from: [5481, 851], to: [5481, 1000], extend: 40 },
+    ],
+  },
+]
+
 /** What the stage plays: the same for every visitor (see `frames.ts`). */
 export const SCRIPT: Script = {
   sceneCount: SCENE_COUNT,
@@ -301,4 +401,5 @@ export const SCRIPT: Script = {
   cuts: CUTS,
   layouts: WINDOW_LAYOUTS,
   people: PEOPLE.length,
+  notes: NOTES,
 }

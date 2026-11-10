@@ -190,12 +190,22 @@
 
 /*
  * The /new stage (components/new/stage.tsx): the root scroller snaps to one
- * snap point a screen, except while a phone's keyboard is up. Until the engine
- * runs only the hero shows, and afterwards only the scene on screen takes
- * pointer events.
+ * snap point a scene, a stride apart, except while a phone's keyboard is up.
+ * The stride is the scroll that plays one scene's change. It is short, so two
+ * notches of a wheel (100 px each, and a snap wants half the way) or a light
+ * swipe change the scene and the snap that follows is brief; not shorter, or
+ * an ordinary swipe would pass two scenes before the fingers lift. Under a
+ * finger it is longer, for the same reason. Until the engine runs only the
+ * hero shows, and afterwards only the scene on screen takes pointer events.
  */
 html[data-stage] {
+  --stride: 22rem;
   scroll-snap-type: y mandatory;
+}
+@media (pointer: coarse) {
+  html[data-stage] {
+    --stride: 60svh;
+  }
 }
 html[data-stage][data-frozen] {
   scroll-snap-type: none;
@@ -212,13 +222,23 @@ html[data-stage] :is([data-line], [data-step], [data-highlight], [data-mark]) {
   will-change: transform, opacity;
 }
 /* A scene's box is its ink: trimmed to the first line's capitals and the last
-   line's baseline, so centring it centres the words, and the gap under the
-   band is the gutter to the capitals. */
+   line's baseline, so centring the tallest centres its words, and the gap
+   under the band is the gutter to the capitals. */
 html[data-stage] [data-scene] > :first-child {
   text-box: trim-start cap alphabetic;
 }
 html[data-stage] [data-scene] > :last-child {
   text-box: trim-end cap alphabetic;
+}
+/* Beside the picture every scene starts on one line, the top of the tallest.
+   Where the window has the room, the hero stands out of that height, so the
+   form's second step opens downwards and the line stays where it is. */
+@variant cols {
+  @media (height >= 56rem) {
+    html[data-stage] [data-scene][data-from="0"] {
+      height: 0;
+    }
+  }
 }
 /* Under a band, the form's second step needs the screen: the band folds. */
 @variant band {

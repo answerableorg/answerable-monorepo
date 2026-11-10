@@ -106,3 +106,16 @@
 - Measured on the production build (details in `round-5/findings.md`): images per screen 218 KB to 1,331 KB; Chromium better than live (no GPU stall, one slow frame per loop against live's 2 to 3); WebKit level with live except one frame of 37 to 89 ms at phone size entering the people scene.
 - To get there: one zoom for all six values (Chromium GPU stalls); the square clip replaced by four sliding white shutters, one painting changing opacity at a time, hidden paintings at 0.2% rather than 0, plain dissolves (WebKit).
 - Gates: typecheck 0, lint 0, web tests 175 pass, build 0, knip nothing new. Not tested on a real iPhone. Temporary `web-r5` entry (port 47150) in the main checkout's `.claude/launch.json`, to revert at the end.
+
+## 2026-11-09, round 5: Safari, then committed
+
+- Owner: "Fix Safari first". The WebKit work above; round 5 committed as `cabe7369` on `claude/new-landing-r5`.
+
+## 2026-11-10, round 6: the panel as a drawing sheet
+
+- Owner, with three inspirations: the right side "feels empty"; blueprint construction lines and a grid, always visible, the images below them and snapped to the grid; lines aligned with the image; pointing lines to details; "this thing has been thought out"; every screen size, desktop with the most detail; plan with files.
+- Plan in `round-6/` (`task_plan.md`, `findings.md`, `design.md`). One rule: a line either belongs to the lattice or continues something in the painting.
+- Built (`d4f031b4`, then this entry's commit): a lattice of square modules exactly at the panel's inset, every picture edge on a lattice line at rest (tested at every screen); a frame with zone ticks and labels; four rules carrying the picture's edges across the sheet; a title strip with the sheet number, the scene's name and a key plan of the studio; the commas on the lattice; on each painting the marks that continue it (the sun's circle and centre lines, the badge's outline and lettering lines, the axes of the pen, rule and arm, the outlines of the plate, envelope and print).
+- Owner while it was built: lines "too visible … should not take too much power" (every colour see-through); "an extra line at the bottom" (the strip filled); "way faster" (the stride 22rem, 60svh under a finger); the copy shifted between scenes (every block now starts on one line); "remove the pointing lines" (leaders and labels gone); "keep the lines around the badge, those look nice" (the marks on the paintings kept).
+- Measured on the production build (`round-6/findings.md`): a scene change 283 ms in Chromium (was 510) and about 183 ms in WebKit; no frame over 16.8 ms in Chromium and none over 33 ms in WebKit across every scene at desktop, large and phone sizes; the WebKit phone hitch entering the people scene gone (19 to 20 ms; it was 24 to 66 ms), because a large painting no longer travels fast while hidden; the loop wraps on a phone now, at a cost of two frames of 33 to 47 ms at rest on the WebKit phone.
+- Gates: typecheck, lint, web tests 287 pass, web build, knip clean. Not tested on a real iPhone or with a real trackpad. Not landed: on `claude/new-landing-r5`, waiting on the owner. The temporary `web-r5` entry in the main checkout's `.claude/launch.json` is still to revert.

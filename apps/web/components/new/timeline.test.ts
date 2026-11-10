@@ -102,6 +102,7 @@ describe("unit: the stage's timeline", () => {
     const { frameAt, KINKS, SHUTTERS } = await import("./frames")
     const {
       CUTS,
+      NOTES,
       PAINTING_SIZES,
       PAINTINGS,
       PANEL_STATES,
@@ -115,6 +116,7 @@ describe("unit: the stage's timeline", () => {
       cuts: CUTS,
       layouts: WINDOW_LAYOUTS,
       people: 2,
+      notes: NOTES,
     }
     for (const [size, column] of [
       [{ w: 848, h: 905 }, true],
@@ -164,6 +166,11 @@ describe("unit: the stage's timeline", () => {
         .filter(([key]) => /^(strip|keyplan)/.test(key))
         .reduce((sum, [, entry]) => sum + simplify(entry).offsets.length, 0)
       expect(strip).toBeLessThan(120)
+      // A note fades with its scene and follows its painting while it shows.
+      const notes = [...series]
+        .filter(([key]) => key.startsWith("note:"))
+        .reduce((sum, [, entry]) => sum + simplify(entry).offsets.length, 0)
+      expect(notes).toBeLessThan(130)
 
       const along = (simple: Series, offset: number, key: "x" | "y" | "s") => {
         const { offsets, styles } = simple

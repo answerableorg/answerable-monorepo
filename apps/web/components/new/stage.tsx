@@ -325,10 +325,15 @@ export function Stage({
       mark(target)
     }
 
-    /** At rest on the last snap point: back to the top, which looks the same. */
+    /**
+     * At rest on the last snap point: back to the top, which looks the same.
+     * Within two pixels counts: a stride of part of the screen's height is a
+     * fraction of a pixel, and a browser rests on whole ones.
+     */
     const settle = () => {
       window.clearTimeout(settleTimer)
-      if (frozen || target < SNAPS - 1 - 0.001) return
+      const stride = (tops[SNAPS - 1] ?? 0) - (tops[SNAPS - 2] ?? 0)
+      if (frozen || stride <= 0 || target < SNAPS - 1 - 2 / stride) return
       window.scrollTo({ top: tops[0] ?? 0, behavior: "instant" })
       jumpTo(0)
     }
@@ -406,7 +411,7 @@ export function Stage({
         callback()
       }
       window.addEventListener("scrollend", finish, { once: true })
-      window.setTimeout(finish, 900)
+      window.setTimeout(finish, 500)
     }
 
     /**
@@ -515,8 +520,10 @@ export function Stage({
           squares sit on the bottom line, `--m` up. Inside the picture,
           `--inset` is the margin less the frame, so anything at the inset
           lands on those lines: the square's edges, the portraits. The header
-          and the rail rows are the same height, `--edge`, so the copy is
-          centred on the window's middle, which is the picture's.
+          and the rail rows are the same height, `--edge`, so the copy's cell
+          is centred on the window's middle, which is the picture's. Every
+          scene sits in that one cell, as tall as the tallest, so every scene
+          starts on one line, and no start moves from scene to scene.
         - Band (`band`): one gutter, 1.5rem, or the copy column's edge where
           the window is wider than the column. The logo, the copy and the
           square keep it from the sides, and the copy starts 1.5rem below the
@@ -529,7 +536,7 @@ export function Stage({
       <div
         ref={stageRef}
         data-stage-grid
-        className="stage:sticky stage:top-0 stage:h-svh stage:min-h-0 stage:overflow-hidden stage:transition-[grid-template-rows] stage:duration-500 stage:ease-[cubic-bezier(0.2,0,0,1)] cols:grid-cols-2 cols:grid-rows-[auto_1fr] cols:[--inset:calc(var(--m)-var(--frame,16px))] stage:band:grid-rows-[auto_var(--band)_minmax(0,1fr)] stage:cols:grid-rows-[var(--edge)_minmax(0,1fr)_var(--edge)] [@media(height<30rem)]:stage:cols:grid-rows-[calc(var(--m)+1rem)_minmax(0,1fr)_0.5rem] grid min-h-svh grid-cols-1 grid-rows-[auto_auto_1fr] [--edge:calc(var(--m)+2.5rem)] [--inset:max(1.5rem,calc((100%_-_560px)/2))] [--m:2rem] motion-reduce:transition-none min-[80rem]:[--m:3rem] min-[120rem]:[--m:4rem] [@media(height<35rem)]:[--m:1.5rem]"
+        className="stage:sticky stage:top-0 stage:h-svh stage:min-h-0 stage:overflow-hidden stage:transition-[grid-template-rows] stage:duration-300 stage:ease-[cubic-bezier(0.2,0,0,1)] cols:grid-cols-2 cols:grid-rows-[auto_1fr] cols:[--inset:calc(var(--m)-var(--frame,16px))] stage:band:grid-rows-[auto_var(--band)_minmax(0,1fr)] stage:cols:grid-rows-[var(--edge)_minmax(0,1fr)_var(--edge)] [@media(height<30rem)]:stage:cols:grid-rows-[calc(var(--m)+1rem)_minmax(0,1fr)_0.5rem] grid min-h-svh grid-cols-1 grid-rows-[auto_auto_1fr] [--edge:calc(var(--m)+2.5rem)] [--inset:max(1.5rem,calc((100%_-_560px)/2))] [--m:2rem] motion-reduce:transition-none min-[80rem]:[--m:3rem] min-[120rem]:[--m:4rem] [@media(height<35rem)]:[--m:1.5rem]"
         style={
           { "--band": "clamp(10rem, 100svh - 26rem, 46svh)" } as CSSProperties
         }
@@ -554,7 +561,7 @@ export function Stage({
         <div className="cols:col-start-1 cols:row-start-2 cols:px-12 min-h-0 px-6">
           <div
             ref={scenesRef}
-            className="stage:relative stage:h-full stage:gap-0 stage:py-0 mx-auto flex w-full max-w-[560px] flex-col gap-16 py-8 min-[1800px]:max-w-[640px]"
+            className="stage:relative stage:grid stage:h-full stage:grid-cols-[minmax(0,1fr)] stage:gap-0 stage:py-0 stage:cols:[align-content:safe_center] mx-auto flex w-full max-w-[560px] flex-col gap-16 py-8 min-[1800px]:max-w-[640px]"
           >
             {children}
           </div>
@@ -565,8 +572,9 @@ export function Stage({
         </div>
       </div>
 
-      {/* The track: one snap point a screen. The last is a large viewport
-          tall, so a phone with its bars hidden can still scroll onto it. */}
+      {/* The track: one snap point a scene, a stride apart (`--stride`, in
+          globals.css). The last is a large viewport tall, so a phone with its
+          bars hidden can still scroll onto it. */}
       <div
         ref={trackRef}
         aria-hidden="true"
@@ -578,7 +586,7 @@ export function Stage({
             data-snap
             className={cn(
               "snap-start snap-always",
-              index === SNAPS - 1 ? "h-lvh" : "h-svh",
+              index === SNAPS - 1 ? "h-lvh" : "h-[var(--stride)]",
             )}
           />
         ))}

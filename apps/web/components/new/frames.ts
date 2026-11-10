@@ -1,3 +1,4 @@
+import type { Note } from "@/components/new/notes"
 import type { Cut, PaintingKey, PanelState } from "@/components/new/scenes"
 import { sheetPlan, type SheetPlan } from "@/components/new/sheet"
 import {
@@ -49,6 +50,7 @@ export type Style = {
  *   `half:<n>` a person's white half and `comma:<n>` their photograph.
  * - `strip:<scene>` a scene's words in the title strip; `keyplan` the key
  *   plan beside them and `keyplan:window` the square on it.
+ * - `note:<n>` what the sheet points out on a scene, moved with its painting.
  */
 export type Frame = Record<string, Style>
 
@@ -87,6 +89,8 @@ export type Script = {
   cuts: readonly Cut[]
   layouts: { column: WindowLayout; band: WindowLayout }
   people: number
+  /** What the sheet points out in the paintings. */
+  notes: readonly Note[]
 }
 
 /** What the stage measured: this window, this font, this preference. */
@@ -139,6 +143,9 @@ export function latticeOf(script: Script, panel: Panel): Lattice {
  */
 const WORDS_OUT = [11 / 32, 16 / 32] as const
 const WORDS_IN = [16 / 32, 21 / 32] as const
+/** When a scene's notes are gone, and when the next one's start to show. */
+const NOTE_OUT = 5 / 32
+const NOTE_IN = 27 / 32
 /** From 0 to 1 between two points, in a straight line. */
 const ramp = (from: number, to: number, x: number) =>
   clamp((x - from) / (to - from), 0, 1)
@@ -281,13 +288,30 @@ function panelFrame(
   }
   const from = view(a)
   const to = view(b)
-  /** Where a painting next shows at rest, from the next scene on. */
-  const home = (key: PaintingKey): Placement => {
-    for (let ahead = 1; ahead <= sceneCount; ahead++) {
-      const state = states[(index + ahead) % sceneCount]!
-      if (state.painting === key) return view(state)
+  /**
+   * Where a painting off show waits. It leaves where it last showed for where
+   * it next shows at one pace, over every scene between: a large painting
+   * that travels fast costs WebKit frames, seen or not.
+   */
+  const waiting = (key: PaintingKey): Placement => {
+    const state = (scene: number) =>
+      states[((scene % sceneCount) + sceneCount) % sceneCount]!
+    let ahead = 1
+    while (ahead <= sceneCount && state(index + ahead).painting !== key) ahead++
+    if (ahead > sceneCount) return { x: 0, y: 0, scale: 1 }
+    let back = 0
+    while (state(index - back).painting !== key) back++
+    const here = view(state(index - back))
+    const there = view(state(index + ahead))
+    // Off show from the scene after its last to the scene before its next.
+    const scenes = ahead + back - 2
+    if (scenes <= 0) return there
+    const u = clamp((back - 1 + f) / scenes, 0, 1)
+    return {
+      x: lerp(here.x, there.x, u),
+      y: lerp(here.y, there.y, u),
+      scale: here.scale * Math.pow(there.scale / here.scale, u),
     }
-    return { x: 0, y: 0, scale: 1 }
   }
 
   const keys = Object.keys(paintings) as PaintingKey[]
@@ -300,10 +324,9 @@ function panelFrame(
     keys.map((other, order) => (other === key || order === 0 ? 1 : GHOST))
 
   let picture: Picture
-  // Each painting's placement and opacity; a painting not on show waits,
-  // still, where it next shows.
+  // Each painting's placement and opacity.
   const at = new Map<PaintingKey, Placement>(
-    keys.map((key) => [key, home(key)]),
+    keys.map((key) => [key, waiting(key)]),
   )
   let alphas: number[] = [...rest(a.painting)]
   if (a.painting === b.painting) {
@@ -343,16 +366,11 @@ function panelFrame(
       if (outgoing > 0) alphas[outgoing] = lerp(1, GHOST, gone)
     }
   } else {
-    // Under the portraits: the change happens while nothing shows it, and
-    // gradually, as everything else here does. WebKit stalls when many large
-    // layers change at once.
+    // Under the portraits: the outgoing painting fades where it is, while
+    // nothing shows it, and gradually, as everything else here does. WebKit
+    // stalls when many large layers change at once.
     picture = mixGeometry(from, to, e)
-    const outgoing = home(a.painting)
-    at.set(a.painting, {
-      x: lerp(from.x, outgoing.x, e),
-      y: lerp(from.y, outgoing.y, e),
-      scale: from.scale * Math.pow(outgoing.scale / from.scale, e),
-    })
+    at.set(a.painting, from)
     at.set(b.painting, to)
     const after = rest(b.painting)
     alphas = alphas.map((value, order) => lerp(value, after[order]!, e))
@@ -423,6 +441,44 @@ function panelFrame(
       s: lerp(start.w, end.w, e) / near(0).w,
     }
   }
+
+  // The notes: each is drawn for its painting at rest on its scenes. It goes
+  // with the scene's first move and comes with the next one's last, and it
+  // follows its painting meanwhile, so a line never leaves what it points at.
+  sheetOf(script, panel).notes.forEach((note, order) => {
+    const key = `note:${order}`
+    if (!note) {
+      frame[key] = { opacity: 0, x: 0, y: 0, s: 1 }
+      return
+    }
+    const here = note.scenes.includes(index)
+    const there = note.scenes.includes(next)
+    const rest = { x: note.box.x, y: note.box.y, s: 1 }
+    if (reduced) {
+      frame[key] = { opacity: (f === 0 ? here : there) ? opacity : 0, ...rest }
+      return
+    }
+    const stays = here && there
+    const shown = stays
+      ? 1
+      : here
+        ? 1 - ramp(REST, NOTE_OUT, t)
+        : there
+          ? ramp(NOTE_IN, 1 - REST, t)
+          : 0
+    if (!stays && !(here && t <= NOTE_OUT) && !(there && t >= NOTE_IN)) {
+      frame[key] = { opacity: shown, ...rest }
+      return
+    }
+    const placement = at.get(note.painting)!
+    const k = placement.scale / note.origin.scale
+    frame[key] = {
+      opacity: shown,
+      x: placement.x + (note.box.x - note.origin.x) * k,
+      y: placement.y + (note.box.y - note.origin.y) * k,
+      s: k,
+    }
+  })
 }
 
 /** The picture the shutters frame: a rectangle, by its centre. */

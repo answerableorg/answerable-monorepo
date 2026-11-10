@@ -10,6 +10,7 @@ import {
 } from "react"
 
 import { sheetOf, SHUTTERS, type Layout } from "@/components/new/frames"
+import type { NotePlan } from "@/components/new/notes"
 import {
   COLUMN_QUERY,
   PAINTINGS,
@@ -67,6 +68,8 @@ type Parts = {
   keyplan: HTMLDivElement | null
   /** The square on the key plan. */
   square: HTMLDivElement | null
+  /** Each of the script's notes. */
+  notes: (HTMLDivElement | null)[]
 }
 
 const px = (value: number) => `${Math.round(value * 1000) / 1000}px`
@@ -149,6 +152,7 @@ function panelTargets(parts: Parts) {
   parts.words.forEach((words, scene) => add(`strip:${scene}`, words))
   add("keyplan", parts.keyplan)
   add("keyplan:window", parts.square)
+  parts.notes.forEach((note, order) => add(`note:${order}`, note))
   return targets
 }
 
@@ -162,13 +166,15 @@ function decodeAhead(image: HTMLImageElement) {
 
 /**
  * The sheet's colours, all see-through so that they sit back over white and
- * over a painting alike: the lattice's sky, the drawing's ink, and the ink a
- * little stronger for words, which are too small to read at a line's weight.
+ * over a painting alike: the lattice's sky, the drawing's ink, the ink a
+ * little stronger for words, which are too small to read at a line's weight,
+ * and stronger again for the notes, which are drawn over paint.
  */
 const SHEET_COLOURS = {
   "--sheet-lattice": "rgb(140 200 220 / 0.45)",
   "--sheet-ink": "rgb(39 71 214 / 0.34)",
   "--sheet-text": "rgb(39 71 214 / 0.58)",
+  "--sheet-note": "rgb(39 71 214 / 0.75)",
 } as CSSProperties
 
 /**
@@ -198,6 +204,7 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
     words: [],
     keyplan: null,
     square: null,
+    notes: [],
   })
   // What the sheet draws, from the last measure: drawn once per panel size.
   const [plan, setPlan] = useState<SheetPlan | null>(null)
@@ -366,9 +373,70 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
           style={{ visibility: "hidden" }}
         />
       ))}
+
+      {/* What the sheet draws on the paintings, over everything else. */}
+      {SCRIPT.notes.map((note, order) => (
+        <div
+          key={note.scenes.join()}
+          ref={(element) => {
+            partsRef.current.notes[order] = element
+          }}
+          aria-hidden="true"
+          className="pointer-events-none absolute top-0 left-0 origin-top-left will-change-[transform,opacity]"
+          style={{ opacity: 0 }}
+        >
+          {plan?.notes[order] && (
+            <NoteDrawing note={plan.notes[order]} hair={plan.hair} />
+          )}
+        </div>
+      ))}
     </div>
   )
 }
+
+/**
+ * A note, drawn in its box: hairlines along the painting, cut to the picture,
+ * and a small square at each corner of an outline.
+ */
+function NoteDrawing({ note, hair }: { note: NotePlan; hair: number }) {
+  const { box, clip } = note
+  return (
+    <svg
+      className="block overflow-visible"
+      width={box.w}
+      height={box.h}
+      fill="none"
+    >
+      <svg
+        x={clip.x}
+        y={clip.y}
+        width={clip.w}
+        height={clip.h}
+        viewBox={`${clip.x} ${clip.y} ${clip.w} ${clip.h}`}
+        stroke="var(--sheet-note)"
+        strokeWidth={hair}
+      >
+        <path d={note.axes} strokeDasharray="10 3 1.5 3" />
+        <path d={note.construction} />
+      </svg>
+      {note.handles.map((rect) => (
+        <g key={`${rect.x} ${rect.y}`} shapeRendering="crispEdges">
+          <rect {...size(rect, 0)} fill="white" />
+          <rect {...size(rect, 0)} fill="var(--sheet-note)" />
+          <rect {...size(rect, hair)} fill="white" />
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+/** A rectangle's attributes, drawn in by `inset` on every side. */
+const size = ({ x, y, w, h }: NotePlan["handles"][number], inset: number) => ({
+  x: x + inset,
+  y: y + inset,
+  width: w - 2 * inset,
+  height: h - 2 * inset,
+})
 
 /**
  * The sheet's title strip, as a drawing has one: the sheet's number, the

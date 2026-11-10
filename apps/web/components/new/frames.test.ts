@@ -11,6 +11,7 @@ import {
 } from "./frames"
 import {
   CUTS,
+  NOTES,
   PAINTING_SIZES,
   PAINTINGS,
   PANEL_STATES,
@@ -27,6 +28,7 @@ const SCRIPT: Script = {
   cuts: CUTS,
   layouts: WINDOW_LAYOUTS,
   people: 2,
+  notes: NOTES,
 }
 
 /** The page's scenes: hero, programme, values (2 to 7), people, join. */
@@ -203,11 +205,12 @@ describe("unit: the stage's frames", () => {
     }
   })
 
-  test("no painting's opacity or place jumps, except at the loop", () => {
+  test("no painting's opacity or place jumps, the loop included", () => {
     for (const panel of PANELS) {
-      for (let segment = 0; segment < SCENE_COUNT - 1; segment++) {
+      for (let segment = 0; segment < SCENE_COUNT; segment++) {
+        const next = (segment + 1) % SCENE_COUNT
         const end = frameAt(SCRIPT, layout(false, panel), segment, 1)
-        const start = frameAt(SCRIPT, layout(false, panel), segment + 1, 0)
+        const start = frameAt(SCRIPT, layout(false, panel), next, 0)
         for (const key of KEYS) {
           expect(end[`painting:${key}`]!.opacity).toBeCloseTo(
             start[`painting:${key}`]!.opacity!,
@@ -227,6 +230,48 @@ describe("unit: the stage's frames", () => {
             a[`painting:${key}`]!.opacity! - b[`painting:${key}`]!.opacity!,
           )
           expect(step).toBeLessThan(0.15)
+        }
+      }
+    }
+  })
+
+  test("under the portraits, the painting leaving fades where it is", () => {
+    for (const panel of PANELS) {
+      const measured = layout(false, panel)
+      const rest = placed(at(7, measured), "studio")
+      for (let n = 0; n <= 64; n++) {
+        placed(at(7 + n / 64, measured), "studio").forEach((value, index) =>
+          expect(value).toBeCloseTo(rest[index]!, 9),
+        )
+      }
+    }
+  })
+
+  test("off show, a painting goes to where it next shows at one pace", () => {
+    for (const panel of PANELS) {
+      const measured = layout(false, panel)
+      // The studio shows from scene 2 to scene 7: three scenes to go back.
+      const [fromX, fromY, fromScale] = placed(at(7, measured), "studio")
+      const [toX, toY, toScale] = placed(at(2, measured), "studio")
+      for (let n = 0; n <= 300; n++) {
+        const u = n / 300
+        const frame = at((8 + u * 3) % SCENE_COUNT, measured)
+        const [x, y, scale] = placed(frame, "studio")
+        expect(x).toBeCloseTo(fromX! + (toX! - fromX!) * u, 6)
+        expect(y).toBeCloseTo(fromY! + (toY! - fromY!) * u, 6)
+        expect(scale).toBeCloseTo(
+          fromScale! * Math.pow(toScale! / fromScale!, u),
+          9,
+        )
+        expect(frame["painting:studio"]!.opacity).toBe(GHOST)
+      }
+      // The meeting and the badge show at one place: they never move.
+      for (const key of ["meeting", "badge"] as const) {
+        const rest = placed(at(0, measured), key)
+        for (const progress of POSITIONS) {
+          placed(at(progress, measured), key).forEach((value, index) =>
+            expect(value).toBeCloseTo(rest[index]!, 9),
+          )
         }
       }
     }
@@ -481,6 +526,151 @@ describe("unit: the title strip's frames", () => {
         expect(Math.hypot(b.x! - a.x!, b.y! - a.y!)).toBeLessThan(3)
       }
       last = frame
+    }
+  })
+})
+
+describe("unit: the notes' frames", () => {
+  /** A note's frame for each of the script's notes. */
+  const notes = (frame: Frame) =>
+    NOTES.map((_, order) => frame[`note:${order}`]!)
+  /** Finer than `POSITIONS`: a note's fade is five thirty-seconds long. */
+  const FINE = Array.from({ length: SCENE_COUNT * 160 + 1 }, (_, n) => n / 160)
+
+  test("every note has a whole frame at every position, on every panel", () => {
+    for (const panel of PANELS) {
+      for (const reduced of [false, true]) {
+        for (const progress of POSITIONS) {
+          for (const note of notes(at(progress, layout(reduced, panel)))) {
+            // The timeline keeps one series a key: a gap would leave a hole.
+            expect(Object.keys(note).sort()).toEqual(["opacity", "s", "x", "y"])
+          }
+        }
+      }
+    }
+  })
+
+  test("at rest, a note shows on its scenes only, where it was drawn", () => {
+    for (const panel of PANELS) {
+      const plans = sheetOf(SCRIPT, panel).notes
+      const measured = layout(false, panel)
+      for (let scene = 0; scene < SCENE_COUNT; scene++) {
+        notes(at(scene, measured)).forEach((note, order) => {
+          const plan = plans[order]
+          const shows = !!plan && plan.scenes.includes(scene)
+          expect(note.opacity).toBe(shows ? 1 : 0)
+          if (!shows) return
+          expect(note.x).toBeCloseTo(plan.box.x, 6)
+          expect(note.y).toBeCloseTo(plan.box.y, 6)
+          expect(note.s).toBeCloseTo(1, 9)
+        })
+      }
+      // The loop ends where it starts.
+      notes(at(SCENE_COUNT, measured)).forEach((note, order) => {
+        const first = notes(at(0, measured))[order]!
+        expect(note.opacity).toBe(first.opacity!)
+        expect(note.x).toBeCloseTo(first.x!, 6)
+        expect(note.y).toBeCloseTo(first.y!, 6)
+      })
+    }
+  })
+
+  test("a note goes with its scene's first move and comes with the next one's last", () => {
+    const plans = sheetOf(SCRIPT, PANELS[0]).notes
+    let last: Frame | null = null
+    for (const progress of FINE) {
+      const frame = at(progress)
+      const segment = Math.min(Math.floor(progress), SCENE_COUNT - 1)
+      const t = progress - segment
+      const next = (segment + 1) % SCENE_COUNT
+      notes(frame).forEach((note, order) => {
+        const plan = plans[order]!
+        const here = plan.scenes.includes(segment)
+        const there = plan.scenes.includes(next)
+        if (here && there) return expect(note.opacity).toBe(1)
+        // Out by five thirty-seconds of the way, back from twenty-seven.
+        if (t >= 5 / 32 && t <= 27 / 32) expect(note.opacity).toBe(0)
+        if (!here && !there) expect(note.opacity).toBe(0)
+        // It only fades one way inside a transition.
+        const before = last && t > 0 ? last[`note:${order}`]!.opacity! : null
+        if (before === null) return
+        if (here) expect(note.opacity!).toBeLessThanOrEqual(before + 1e-9)
+        if (there) expect(note.opacity!).toBeGreaterThanOrEqual(before - 1e-9)
+      })
+      last = frame
+    }
+  })
+
+  test("two notes never show at once, on any panel", () => {
+    for (const panel of PANELS) {
+      for (const reduced of [false, true]) {
+        for (const progress of FINE) {
+          const showing = notes(at(progress, layout(reduced, panel)))
+          expect(
+            showing.filter((note) => note.opacity! > 0).length,
+          ).toBeLessThan(2)
+        }
+      }
+    }
+  })
+
+  test("while it shows, a note stays on its painting", () => {
+    for (const panel of PANELS) {
+      const plans = sheetOf(SCRIPT, panel).notes
+      for (const progress of FINE) {
+        const frame = at(progress, layout(false, panel))
+        notes(frame).forEach((note, order) => {
+          const plan = plans[order]
+          if (!plan || note.opacity === 0) return
+          const painting = frame[`painting:${plan.painting}`]!
+          // Never over a painting more see-through than its lines.
+          expect(painting.opacity!).toBeGreaterThanOrEqual(note.opacity!)
+          // Scaled and moved as its painting is, from where it was drawn.
+          const k = painting.s! / plan.origin.scale
+          expect(note.s).toBeCloseTo(k, 9)
+          expect(note.x).toBeCloseTo(
+            painting.x! + (plan.box.x - plan.origin.x) * k,
+            6,
+          )
+          expect(note.y).toBeCloseTo(
+            painting.y! + (plan.box.y - plan.origin.y) * k,
+            6,
+          )
+        })
+      }
+    }
+  })
+
+  test("reduced motion never moves a note", () => {
+    for (const panel of PANELS) {
+      const plans = sheetOf(SCRIPT, panel).notes
+      for (const progress of POSITIONS) {
+        const frame = at(progress, layout(true, panel))
+        notes(frame).forEach((note, order) => {
+          const plan = plans[order]
+          if (!plan) return expect(note.opacity).toBe(0)
+          expect(note).toMatchObject({ x: plan.box.x, y: plan.box.y, s: 1 })
+          // It cuts with the panel, through white.
+          const scene = Math.round(progress) % SCENE_COUNT
+          expect(note.opacity).toBe(
+            plan.scenes.includes(scene) ? frame.panel!.opacity! : 0,
+          )
+        })
+      }
+    }
+  })
+
+  test("a panel that crops a note's detail away keeps its frame, unseen", () => {
+    // The short phone's band cuts the sun off the meeting.
+    const short = layout(false, PANELS[4])
+    expect(sheetOf(SCRIPT, PANELS[4]).notes[0]).toBeNull()
+    for (const progress of POSITIONS) {
+      expect(at(progress, short)["note:0"]).toEqual({
+        opacity: 0,
+        x: 0,
+        y: 0,
+        s: 1,
+      })
     }
   })
 })

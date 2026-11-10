@@ -13,7 +13,7 @@ the painting.** Nothing is decoration for its own sake.
 | Lattice | Square modules in sky, across the frame | never |
 | Frame | The lattice's outline and the strip's, in ink; ticks at every module; zone labels (numbers across the top, letters down the left, no I or O) | never |
 | Rules | The picture's four edges continued across the lattice, in ink | with the shutters |
-| Notes | One small drawing per scene: construction lines, leaders, labels | glued to the painting, fade |
+| Notes | One small drawing per scene: centre lines, construction lines, outlines, circles | glued to the painting, fade |
 | Strip | Sheet number and scene name on the left; the key plan of the studio on the right | fade; the key plan's window slides |
 
 Everything above the portraits is `aria-hidden` and takes no pointer.
@@ -31,7 +31,7 @@ Everything above the portraits is `aria-hidden` and takes no pointer.
   the shorter side, kept between 44 and 76 px.
 - Every line's position is rounded to a device pixel (`ratio`), and
   everything that sits on the lattice reads those same numbers: the lattice
-  as drawn, the picture's edges, the rules, the leaders' ends, the commas.
+  as drawn, the picture's edges, the rules, the commas.
 
 ## Pictures on the lattice
 
@@ -49,64 +49,86 @@ Everything above the portraits is `aria-hidden` and takes no pointer.
   side on the same rows. The comma is stretched by under 1% so its head is
   exactly on the lattice.
 
-## Notes (`components/new/sheet.ts`, tested)
+## Notes (`components/new/notes.ts`, tested)
 
-A note is data in the painting's own pixels, turned into panel pixels
-through the scene's settled placement:
+A note is data in the painting's own pixels (`NOTES` in `scenes.ts`), laid
+out in panel pixels through the scene's settled placement and cut to the
+picture:
 
 | Mark | Drawn as |
 | ---- | -------- |
-| `axis` | The line through two points of a feature, continued to the lattice's edges; open squares on the two points |
+| `axis` | A centre line through two points of a feature, carried past each end, as a chain line |
+| `guide` | A construction line between two points: a baseline, an edge carried on |
 | `outline` | A feature's corners joined, an open square on each: a shape shown as built |
-| `circle` | A circle and its centre-lines (long dash, dot) |
-| `leader` | From a point: 45° to the nearest lattice row, then along it to a lattice point outside the picture, ending in a filled square in the scene's colour; beside the copy, a label above the shelf |
+| `ring` | A circle |
+| `cross` | A cross on a point |
 
-Ink is `#2747d6`; any ink over a painting has a 3 px white casing under it.
-A note fades out in the first third of a move and in over the last third,
+There are no pointing lines and no labels: the owner removed them on
+2026-11-09 ("remove the pointing lines"), and kept the marks on the
+paintings ("keep the lines around the badge, those look nice").
+
+| Scene | On the painting |
+| ----- | --------------- |
+| Hero, Join | The sun's circle and its two centre lines |
+| Programme | The badge's outline with a square on each corner, its lettering's baseline and capitals' line, the sun's circle |
+| Value 1 | The pen's axis, a cross on its tip |
+| Value 2 | The scale rule's axis |
+| Value 3 | The pointing arm's axis, a cross on the hand |
+| Value 4 | The name plate's outline |
+| Value 5 | The envelope's outline, a circle on the seal |
+| Value 6 | The print's outline, the dome's axis |
+| People | None |
+
+A note fades out in the first 5/32 of a change and in over the last 5/32,
 and while it shows it moves with its painting (one transform).
 
-| Scene | Beside the copy | In the band |
-| ----- | --------------- | ----------- |
-| Hero, Join | The sun's circle and centre-lines; leader from the badge: "ANSWERABLE AP" | The circle; the leader, no label |
-| Programme | The badge's edges continued, a square on each corner; the sun's circle | The badge's edges |
-| Value 1 | The pen's axis; leaders "PEN", "PLAN" | The pen's axis; one leader |
-| Value 2 | The scale rule's axis; leaders "SCALE RULE", "MODEL" | The axis; one leader |
-| Value 3 | The easel board's edges; leader "ELEVATION" | The board's top edge; one leader |
-| Value 4 | The name plate's outline; leader "NAME PLATE" | The outline; one leader |
-| Value 5 | The envelope's outline, a circle on the seal; leader "SEALED LETTER" | The outline; one leader |
-| Value 6 | The print bed's line, the dome's circle; leaders "3D PRINT", "PRINT BED" | The bed's line; one leader |
-| People | Each comma as a constructed glyph: the head's edges continued, the tail's 45° continued, squares on its corners, the curve's handle | The 45° lines and the corner squares |
+## Colours
 
-Labels are new words on the page (an owner decision). "AP" is never
-expanded. They live in `sheet.ts` and nowhere else.
+The sheet must not take power from the paintings (owner, 2026-11-09: "the
+colors are not good, too visible"). Every line is see-through:
 
-## Tiers
+| Token | Value | Used for |
+| ----- | ----- | -------- |
+| `--sheet-lattice` | `rgb(140 200 220 / 0.45)` | The lattice |
+| `--sheet-ink` | `rgb(39 71 214 / 0.34)` | Frame, rules, ticks, strip lines |
+| `--sheet-text` | `rgb(39 71 214 / 0.58)` | Strip and zone text |
+| `--sheet-note` | `rgb(39 71 214 / 0.75)` | Marks on a painting |
 
-| Where | Lattice, frame, rules | Ticks | Zone labels | Leaders | Labels | Strip text | Key plan |
-| ----- | --------------------- | ----- | ----------- | ------- | ------ | ---------- | -------- |
-| Beside the copy, inset ≥ 28 px | yes | yes | yes | all | yes | yes | yes |
-| Beside the copy, inset < 28 px | yes | if ≥ 12 px | no | all | yes | yes | yes |
-| Band | yes | if ≥ 12 px | no | one | no | if the strip ≥ 28 px | if the strip ≥ 28 px |
+## The copy beside the picture
+
+Every block of copy starts on one line (owner, 2026-11-09): the scenes
+share one grid cell, as tall as the tallest, so nothing shifts between
+scenes. Where the window is at least 56rem high the hero stands out of that
+height, so the form's second step opens downwards and the line stays put.
 
 ## Motion and cost
 
 - Only opacity and transform, as everything else on the stage.
 - The lattice and frame never animate. The rules are four 1 px elements
   with the shutters' own keyframes.
-- New animated elements: 4 rules, 9 notes, 10 strip labels, the key plan
-  and its window. Each note's element is its drawing's bounding box, not
-  the panel.
-- Reduced motion: the picture group crossfades through white as before;
-  the lattice and frame stay.
-- Without JS: the meeting, whole, as before; no sheet.
+- 75 animated elements, 1,289 keyframes on a phone and 1,671 to 1,895 on a
+  desktop.
+- **The stride** (the scroll that plays one change) is 22rem, and 60svh
+  under a finger. It was a screen's height; the owner asked for "way
+  faster". Not shorter: an ordinary swipe would pass two scenes.
+- **A large painting never travels fast, seen or not.** Under the
+  portraits the studio fades where it is, then goes back to its first
+  detail at one pace over the three scenes that do not show it
+  (`waiting` in `frames.ts`). See findings, "A hidden painting's travel".
+- Reduced motion: the picture cuts through white; the lattice and frame
+  stay.
+- Without JS: the page as a document, the meeting whole beside it; no
+  sheet.
 
 ## Files
 
 | File | Change |
 | ---- | ------ |
 | `lib/stage-math.ts` | `lattice`; `Geometry` as a rectangle; `windowGeometry` and `openGeometry` on the lattice |
-| `components/new/sheet.ts` (new) | The notes as data; `sheetPlan(script, panel)`: every line, square and label in panel pixels |
-| `components/new/frames.ts` | Shutters round a rectangle; `rule:<side>`, `note:<id>`, `strip:<scene>`, `keyplan`, `keyplan:window` |
+| `components/new/sheet.ts` (new) | `sheetPlan(script, panel)`: the frame, ticks, zones, strip and key plan in panel pixels |
+| `components/new/notes.ts` (new) | The marks on the paintings, laid out for a panel |
+| `components/new/frames.ts` | Shutters round a rectangle; `rule:<side>`, `note:<n>`, `strip:<scene>`, `keyplan`, `keyplan:window`; `waiting` |
 | `components/new/zoom-panel.tsx` | The sheet's layers; the commas placed on the lattice |
-| `components/new/scenes.ts` | `anchorY`; each state's note |
-| Tests | Lattice properties at every screen; every resting edge on a lattice line; notes inside the panel; keyframe budget |
+| `components/new/stage.tsx`, `app/globals.css` | The stride; the copy on one line; the wrap within two pixels of the last snap |
+| `components/new/scenes.ts` | `NOTES` |
+| Tests | Lattice properties at every screen; every resting edge on a lattice line; notes inside the picture; keyframe budgets; a hidden painting's pace |

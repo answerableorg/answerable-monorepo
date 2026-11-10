@@ -226,8 +226,9 @@ export default function Page() {
 
 /**
  * One scene of the stage. Without the stage it is a section in the column;
- * with it, it fills the copy area, its lines moved by the scroll (`data-line`).
- * In the column it sits in the middle; under a band, at the top.
+ * with it, every scene sits in the copy area's one cell, its lines moved by
+ * the scroll (`data-line`), so each starts on the same line: the top of the
+ * tallest, which the column centres. Under a band, the top of the area.
  */
 function Scene({
   from,
@@ -249,7 +250,7 @@ function Scene({
       data-from={from}
       data-to={to}
       aria-labelledby={labelledBy}
-      className="group/scene stage:absolute stage:inset-0 stage:band:pt-6 stage:cols:justify-center flex flex-col"
+      className="group/scene stage:band:pt-6 stage:[grid-area:1/1] flex flex-col"
     >
       {children}
     </section>

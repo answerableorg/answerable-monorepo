@@ -140,7 +140,7 @@ export function CohortForm() {
           "grid gap-3 sm:grid-cols-2",
           first
             ? "stage:hidden"
-            : "animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out motion-reduce:animate-none",
+            : "animate-in fade-in-0 slide-in-from-top-2 duration-200 ease-out motion-reduce:animate-none",
         )}
       >
         <Field name="businessName" className="sm:col-span-2">

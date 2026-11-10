@@ -10,6 +10,7 @@
  */
 
 import type { Script } from "@/components/new/frames"
+import { notePlans, type NotePlan } from "@/components/new/notes"
 import {
   clamp,
   lattice,
@@ -20,7 +21,7 @@ import {
 } from "@/lib/stage-math"
 import { COMMA_BOX, COMMA_PATH } from "@answerable/ui/lib/logo"
 
-export type Side = "top" | "right" | "bottom" | "left"
+type Side = "top" | "right" | "bottom" | "left"
 
 /** A measured panel (as `Layout["panel"]` in `frames.ts`). */
 export type SheetPanel = {
@@ -50,16 +51,21 @@ export type SheetPlan = {
   strip: Strip
   /** Each person's comma, the opening one first. */
   commas: readonly [Comma, Comma]
+  /** What the sheet points out in each painting (see `notes.ts`). */
+  notes: readonly (NotePlan | null)[]
 }
 
 /** What of the page's script the sheet is drawn from. */
-export type SheetScript = Pick<Script, "states" | "paintings" | "layouts">
+export type SheetScript = Pick<
+  Script,
+  "states" | "paintings" | "layouts" | "notes"
+>
 
 /**
  * The title strip, as on a drawing: the sheet's number in a cell that ends
  * on a lattice line, then the scene's name, and the key plan at the far end.
  */
-export type Strip = Rect & {
+type Strip = Rect & {
   /** Its words' size; 0 where it is too thin for words. */
   font: number
   /** The words' distance from their cell's left edge. */
@@ -73,7 +79,7 @@ export type Strip = Rect & {
  * The key plan: the painting the squares are details of, whole and small,
  * with the square on show drawn on it.
  */
-export type KeyPlan = {
+type KeyPlan = {
   /** Its cell: from a lattice column line to the frame. */
   cell: Rect
   /** The painting's outline. */
@@ -85,9 +91,9 @@ export type KeyPlan = {
 }
 
 /** A comma on the sheet: its whole box, and its head on lattice lines. */
-export type Comma = { box: Rect; head: Rect }
+type Comma = { box: Rect; head: Rect }
 
-export type Zone = {
+type Zone = {
   x: number
   y: number
   text: string
@@ -372,5 +378,6 @@ export function sheetPlan(panel: SheetPanel, script: SheetScript): SheetPlan {
     },
     strip: title,
     commas: commas(panel, lat),
+    notes: notePlans(panel, lat, script, hair),
   }
 }
