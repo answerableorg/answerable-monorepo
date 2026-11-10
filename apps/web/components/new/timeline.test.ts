@@ -8,6 +8,7 @@ import {
   sample,
   simplify,
   STEPS,
+  stepsFor,
   type Series,
 } from "./timeline"
 
@@ -38,6 +39,26 @@ describe("unit: the timeline's keyframes", () => {
     expect(series.get("a")!.offsets).toEqual([
       0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1,
     ])
+  })
+
+  test("samples each segment at its own steps, when given them", () => {
+    const series = sample(
+      (segment, t) => ({ a: { opacity: segment + t } }),
+      2,
+      (segment) => (segment === 0 ? 2 : 4),
+      half,
+    )
+    expect(series.get("a")!.offsets).toEqual([
+      0, 0.25, 0.5, 0.625, 0.75, 0.875, 1,
+    ])
+  })
+
+  test("a transition gets more samples by the square root of its travel", () => {
+    expect(stepsFor(0)).toBe(STEPS)
+    expect(stepsFor(1000)).toBe(STEPS)
+    expect(stepsFor(1001)).toBe(2 * STEPS)
+    expect(stepsFor(4000)).toBe(2 * STEPS)
+    expect(stepsFor(4001)).toBe(3 * STEPS)
   })
 
   test("keeps a jump between segments as two keyframes at one offset", () => {
@@ -95,11 +116,45 @@ describe("unit: the timeline's keyframes", () => {
       },
     ])
   })
+
+  test("an element laid out smaller has its scale divided each way, and nothing else", () => {
+    const fit = { x: 0.3, y: 0.25 }
+    expect(css({ opacity: 0.5, x: 1, y: -2.345, s: 0.3 }, fit)).toEqual({
+      opacity: "0.5000",
+      transform: "translate3d(1.00px, -2.35px, 0px) scale(1.000000, 1.200000)",
+    })
+    expect(css({ x: 4, s: 0.15 }, fit).transform).toBe(
+      "translate3d(4.00px, 0.00px, 0px) scale(0.500000, 0.600000)",
+    )
+    expect(css({ opacity: 1 }, fit)).toEqual({ opacity: "1.0000" })
+    expect(
+      keyframes(
+        {
+          offsets: [0, 1],
+          styles: [
+            { x: 0, s: 0.3 },
+            { x: 10, s: 0.075 },
+          ],
+        },
+        fit,
+      ),
+    ).toEqual([
+      {
+        offset: 0,
+        transform: "translate3d(0.00px, 0.00px, 0px) scale(1.000000, 1.200000)",
+      },
+      {
+        offset: 1,
+        transform:
+          "translate3d(10.00px, 0.00px, 0px) scale(0.250000, 0.300000)",
+      },
+    ])
+  })
 })
 
 describe("unit: the stage's timeline", () => {
   test("the painting on top keeps within half a pixel of its exact path", async () => {
-    const { frameAt, KINKS, SHUTTERS } = await import("./frames")
+    const { frameAt, KINKS, SHUTTERS, travelAt } = await import("./frames")
     const {
       CUTS,
       NOTES,
@@ -137,7 +192,8 @@ describe("unit: the stage's timeline", () => {
       const series = sample(
         (segment, t) => frameAt(script, layout, segment, t),
         SCENE_COUNT,
-        STEPS,
+        // As the stage samples them.
+        (segment) => stepsFor(travelAt(script, layout, segment)),
         (segment, t) => (segment + t) / SCENE_COUNT,
         KINKS,
       )

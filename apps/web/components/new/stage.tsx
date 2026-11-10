@@ -8,12 +8,19 @@ import {
   type Ref,
 } from "react"
 
-import { frameAt, KINKS, type Layout } from "@/components/new/frames"
+import {
+  fitOf,
+  frameAt,
+  KINKS,
+  travelAt,
+  type Layout,
+} from "@/components/new/frames"
 import {
   PAINTING_SIZES,
   RAIL,
   SCENE_COUNT,
   SCRIPT,
+  type PaintingKey,
 } from "@/components/new/scenes"
 import {
   css,
@@ -21,7 +28,7 @@ import {
   paintingTolerance,
   sample,
   simplify,
-  STEPS,
+  stepsFor,
 } from "@/components/new/timeline"
 import { ZoomPanel, type ZoomPanelHandle } from "@/components/new/zoom-panel"
 import { clamp, offsetFrom, progressAt } from "@/lib/stage-math"
@@ -55,6 +62,10 @@ type SceneParts = {
 }
 
 const FIELD_SELECTOR = "input, select, textarea, [role='combobox']"
+
+/** The painting a frame's key moves (`painting:<key>`), if it is one. */
+const paintingOf = (key: string) =>
+  key.startsWith("painting:") ? (key.slice(9) as PaintingKey) : null
 
 /**
  * The /new page as one screen that the scroll plays: the copy column, the
@@ -194,6 +205,16 @@ export function Stage({
       }
     }
     const read = () => progressAt(window.scrollY, tops)
+    /**
+     * The shares of its own size a key's element is laid out at: a painting's
+     * on the measured panel, none for anything else.
+     */
+    const fitFor = (key: string, measured: Layout) => {
+      const painting = paintingOf(key)
+      return painting && measured.panel
+        ? fitOf(SCRIPT, measured.panel)[painting]
+        : undefined
+    }
 
     /** Draws a frame by script: where there are no scroll timelines. */
     const draw = (progress: number) => {
@@ -203,7 +224,7 @@ export function Stage({
       for (const [key, style] of Object.entries(styles)) {
         const element = targets.get(key)
         if (!element) continue
-        const { opacity, transform } = css(style)
+        const { opacity, transform } = css(style, fitFor(key, layout))
         if (opacity !== undefined) write(element, "opacity", opacity)
         if (transform !== undefined) write(element, "transform", transform)
       }
@@ -228,7 +249,8 @@ export function Stage({
       const series = sample(
         (segment, t) => frameAt(SCRIPT, measured, segment, t),
         SCENE_COUNT,
-        STEPS,
+        // More samples where a painting travels far: the values' longer pans.
+        (segment) => stepsFor(travelAt(SCRIPT, measured, segment)),
         at,
         // Reduced motion cuts halfway: both sides of the cut.
         measured.reduced ? [...KINKS, 0.5 - 1e-6] : KINKS,
@@ -237,12 +259,14 @@ export function Stage({
       for (const [key, entry] of series) {
         const element = targets.get(key)
         if (!element) continue
-        const painting = key.startsWith("painting:")
-          ? PAINTING_SIZES[key.slice(9) as keyof typeof PAINTING_SIZES]
-          : null
-        const tolerance = painting ? paintingTolerance(painting) : undefined
+        const painting = paintingOf(key)
+        // A painting's tolerance is in its own pixels: before its fit.
+        const kept = simplify(
+          entry,
+          painting ? paintingTolerance(PAINTING_SIZES[painting]) : undefined,
+        )
         animations.push(
-          element.animate(keyframes(simplify(entry, tolerance)), {
+          element.animate(keyframes(kept, fitFor(key, measured)), {
             timeline,
             fill: "both",
             rangeStart: `${first}px`,

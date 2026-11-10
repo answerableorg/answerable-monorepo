@@ -137,6 +137,73 @@ export function latticeOf(script: Script, panel: Panel): Lattice {
 }
 
 /**
+ * The share of its own width, and of its own height, an element is laid out
+ * at.
+ */
+export type Fit = { x: number; y: number }
+
+const fits = new WeakMap<Panel, Record<PaintingKey, Fit>>()
+
+/**
+ * How large each painting is laid out on a measured panel, as shares of its
+ * own size: the largest the page ever draws it there, each side taken up to a
+ * whole pixel. Its element is then as large as its picture gets and under a
+ * pixel larger, and its transform's scale is divided by the same shares (`css`
+ * in timeline.ts), so a frame's `s` still takes the painting's own pixels to
+ * the screen.
+ *
+ * At its own size a painting is a layer thousands of pixels each way that the
+ * browser scales down. WebKit paints so large a layer in tiles as it pans, on
+ * the main thread, and the further the pan the more it paints: on a phone's
+ * screen the values' longest pans gave frames of up to 123 ms. Laid out as
+ * large as shown, 214 of 220 scrolls between values kept every frame under
+ * 25 ms.
+ *
+ * Whole pixels, and a picture that fills them, because Chromium draws an
+ * image into its box's whole pixels: in a box 2658.462 px wide the studio sat
+ * up to 0.37 px from its place on a value, and in one of 2,659 px within
+ * 0.08 px, as at its own size.
+ *
+ * A change scales a painting one way from one scene to the next, so its
+ * largest scale is at a scene.
+ */
+export function fitOf(script: Script, panel: Panel): Record<PaintingKey, Fit> {
+  let fit = fits.get(panel)
+  if (!fit) {
+    const keys = Object.keys(script.paintings) as PaintingKey[]
+    const largest = new Map(keys.map((key) => [key, 0]))
+    if (panel.size.w > 0 && panel.size.h > 0) {
+      for (let scene = 0; scene < script.sceneCount; scene++) {
+        const frame: Frame = {}
+        panelFrame(frame, script, panel, scene, 0, false)
+        for (const key of keys) {
+          const scale = frame[`painting:${key}`]!.s!
+          if (scale > largest.get(key)!) largest.set(key, scale)
+        }
+      }
+    }
+    fit = Object.fromEntries(
+      keys.map((key) => {
+        const size = script.paintings[key]
+        const scale = largest.get(key)!
+        // A panel without a size draws nothing: every painting at its own size.
+        return [
+          key,
+          scale > 0
+            ? {
+                x: Math.ceil(size.w * scale) / size.w,
+                y: Math.ceil(size.h * scale) / size.h,
+              }
+            : { x: 1, y: 1 },
+        ]
+      }),
+    ) as Record<PaintingKey, Fit>
+    fits.set(panel, fit)
+  }
+  return fit
+}
+
+/**
  * Where in a transition the title strip changes its words: the old ones go
  * just before halfway and the new ones come just after, each on samples of
  * the timeline, so the two are never read at once.
@@ -182,6 +249,40 @@ export function frameAt(
     panelFrame(frame, script, layout.panel, segment, t, reduced)
   }
   return frame
+}
+
+/**
+ * How far the change from scene `segment` to the next carries a painting on
+ * show across the panel, in pixels: the most that the point of a painting
+ * under the panel's middle moves. A painting off show at both ends does not
+ * count, as it waits at one pace, which straight lines draw exactly; nor does
+ * any with reduced motion, which never glides.
+ */
+export function travelAt(
+  script: Script,
+  layout: Layout,
+  segment: number,
+): number {
+  const { panel } = layout
+  if (!panel || layout.reduced) return 0
+  const from = frameAt(script, layout, segment, 0)
+  const to = frameAt(script, layout, segment, 1)
+  const cx = panel.size.w / 2
+  const cy = panel.size.h / 2
+  let travel = 0
+  for (const key of Object.keys(script.paintings)) {
+    const a = from[`painting:${key}`]!
+    const b = to[`painting:${key}`]!
+    if (Math.max(a.opacity!, b.opacity!) < 0.5) continue
+    // The painting's own point under the middle, and where it ends up.
+    const px = (cx - a.x!) / a.s!
+    const py = (cy - a.y!) / a.s!
+    travel = Math.max(
+      travel,
+      Math.hypot(b.x! + b.s! * px - cx, b.y! + b.s! * py - cy),
+    )
+  }
+  return travel
 }
 
 /** The values: the statements roll, the highlight slides along the index. */

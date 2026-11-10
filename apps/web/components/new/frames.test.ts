@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  fitOf,
   frameAt,
   GHOST,
   latticeOf,
   sheetOf,
+  travelAt,
   type Frame,
   type Layout,
   type Script,
@@ -413,6 +415,38 @@ describe("unit: the stage's frames", () => {
     }
   })
 
+  test("a scene change's travel is how far it carries the painting on show", () => {
+    for (const panel of PANELS) {
+      const measured = layout(false, panel)
+      const travels = VALUES.slice(1).map((_, index) => {
+        // Between two details the scale holds, so every point moves as far
+        // as the painting's corner.
+        const [ax, ay, as] = placed(at(2 + index, measured), "studio")
+        const [bx, by, bs] = placed(at(3 + index, measured), "studio")
+        expect(bs).toBe(as)
+        const travel = travelAt(SCRIPT, measured, 2 + index)
+        expect(travel).toBeCloseTo(Math.hypot(bx! - ax!, by! - ay!), 6)
+        return travel
+      })
+      // The longest is from the first value to the second: right across.
+      expect(Math.max(...travels)).toBe(travels[0]!)
+      // A cut moves no painting on show; one off show does not count, though
+      // the studio travels to its first detail under the hero.
+      for (const segment of [0, 1, 7, 8, 9])
+        expect(travelAt(SCRIPT, measured, segment)).toBeCloseTo(0, 6)
+      expect(placed(at(0, measured), "studio")).not.toEqual(
+        placed(at(1, measured), "studio"),
+      )
+    }
+  })
+
+  test("nothing travels with reduced motion, or without a panel", () => {
+    for (let segment = 0; segment < SCENE_COUNT; segment++) {
+      expect(travelAt(SCRIPT, layout(true), segment)).toBe(0)
+      expect(travelAt(SCRIPT, layout(false, null), segment)).toBe(0)
+    }
+  })
+
   test("reduced motion moves nothing and cuts through white", () => {
     const reduced = layout(true)
     for (const progress of POSITIONS) {
@@ -462,6 +496,75 @@ describe("unit: the stage's frames", () => {
         }
       }
     }
+  })
+
+  test("a painting is laid out in whole pixels, as large as it is ever drawn and under a pixel larger", () => {
+    for (const panel of PANELS) {
+      const fit = fitOf(SCRIPT, panel)
+      for (const reduced of [false, true]) {
+        const measured = layout(reduced, panel)
+        const largest = new Map(KEYS.map((key) => [key, 0]))
+        for (const progress of POSITIONS) {
+          const frame = at(progress, measured)
+          for (const key of KEYS) {
+            largest.set(
+              key,
+              Math.max(largest.get(key)!, frame[`painting:${key}`]!.s!),
+            )
+          }
+        }
+        for (const key of KEYS) {
+          const size = SCRIPT.paintings[key]
+          for (const [side, share] of [
+            [size.w, fit[key].x],
+            [size.h, fit[key].y],
+          ] as const) {
+            const laid = side * share
+            expect(laid).toBeCloseTo(Math.round(laid), 9)
+            // Never drawn larger than it is laid out: never scaled up.
+            const spare = laid - side * largest.get(key)!
+            expect(spare).toBeGreaterThan(-1e-9)
+            expect(spare).toBeLessThan(1)
+          }
+        }
+      }
+    }
+  })
+
+  test("the studio is laid out at its size on a value, smaller than its own", () => {
+    for (const panel of PANELS) {
+      const fit = fitOf(SCRIPT, panel)
+      const onValue = at(3, layout(false, panel))["painting:studio"]!.s!
+      const { w, h } = SCRIPT.paintings.studio
+      expect(fit.studio).toEqual({
+        x: Math.ceil(w * onValue) / w,
+        y: Math.ceil(h * onValue) / h,
+      })
+      // No panel is as wide as a value's window is in the painting: every
+      // painting is laid out smaller than its own size, on every panel.
+      for (const key of KEYS) {
+        for (const share of [fit[key].x, fit[key].y]) {
+          expect(share).toBeGreaterThan(0)
+          expect(share).toBeLessThan(1)
+        }
+      }
+    }
+  })
+
+  test("a panel's sizes are worked out once", () => {
+    expect(fitOf(SCRIPT, PANELS[0])).toBe(fitOf(SCRIPT, PANELS[0]))
+  })
+
+  test("a panel without a size lays every painting out at its own size", () => {
+    const own = { x: 1, y: 1 }
+    expect(
+      fitOf(SCRIPT, {
+        size: { w: 390, h: 0 },
+        column: false,
+        margin: 24,
+        ratio: 3,
+      }),
+    ).toEqual({ meeting: own, badge: own, studio: own })
   })
 })
 

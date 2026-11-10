@@ -9,7 +9,7 @@ import {
   type Ref,
 } from "react"
 
-import { sheetOf, SHUTTERS, type Layout } from "@/components/new/frames"
+import { fitOf, sheetOf, SHUTTERS, type Layout } from "@/components/new/frames"
 import type { NotePlan } from "@/components/new/notes"
 import {
   COLUMN_QUERY,
@@ -79,8 +79,17 @@ function measurePanel(parts: Parts): NonNullable<Layout["panel"]> | null {
   if (!root || !root.clientWidth || !root.clientHeight) return null
   const w = root.clientWidth
   const h = root.clientHeight
-  // From here each painting is placed by transform, at its own size, and the
-  // shutters, a pixel larger than the panel all round, slide into place.
+  const panel = {
+    size: { w, h },
+    column: matchMedia(COLUMN_QUERY).matches,
+    // The lattice keeps to the panel's inset, its lines on device pixels.
+    margin: inset?.offsetLeft ?? 24,
+    ratio: window.devicePixelRatio || 1,
+  }
+  // From here each painting is placed by transform, laid out as large as the
+  // page ever shows it on this panel, in whole pixels its picture fills, and
+  // the shutters, a pixel larger than the panel all round, slide into place.
+  const fit = fitOf(SCRIPT, panel)
   for (const shutter of parts.shutters.values()) {
     Object.assign(shutter.style, {
       left: "-1px",
@@ -97,19 +106,14 @@ function measurePanel(parts: Parts): NonNullable<Layout["panel"]> | null {
       inset: "auto",
       left: "0",
       top: "0",
-      width: `${size.w}px`,
-      height: `${size.h}px`,
+      width: px(size.w * fit[key].x),
+      height: px(size.h * fit[key].y),
+      objectFit: "fill",
       transformOrigin: "0 0",
       willChange: "transform, opacity",
     })
   }
-  return {
-    size: { w, h },
-    column: matchMedia(COLUMN_QUERY).matches,
-    // The lattice keeps to the panel's inset, its lines on device pixels.
-    margin: inset?.offsetLeft ?? 24,
-    ratio: window.devicePixelRatio || 1,
-  }
+  return panel
 }
 
 /** Puts what sits on the lattice where the plan has it. */

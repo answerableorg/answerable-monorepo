@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 
-import { PAINTINGS, VALUES } from "./scenes"
+import { NOTES, PAINTINGS, VALUES, VALUES_FROM } from "./scenes"
 
 /**
  * A WebP file's canvas size, from its first chunk: lossy (`VP8 `), lossless
@@ -44,12 +44,39 @@ describe("unit: the /new paintings", () => {
     }
   })
 
-  test("the values read the panorama from left to right", () => {
-    const xs = VALUES.map(({ window }) => window.focus[0])
-    expect(xs.slice(0, 3)).toEqual([...xs.slice(0, 3)].sort((a, b) => a - b))
-    // Values 4 and 5 share a column (the plaque below, the letter above).
-    expect(Math.abs(xs[3]! - xs[4]!)).toBeLessThan(200)
-    expect(xs[5]).toBeGreaterThan(Math.max(...xs.slice(0, 5)))
+  test("no two values share a detail", () => {
+    const squares = VALUES.map(({ window }) => window)
+    squares.forEach((a, index) => {
+      for (const b of squares.slice(index + 1)) {
+        // Their squares may overlap at an edge, never by half.
+        const apart = Math.max(
+          Math.abs(a.focus[0] - b.focus[0]),
+          Math.abs(a.focus[1] - b.focus[1]),
+        )
+        expect(apart).toBeGreaterThan(Math.max(a.span, b.span) / 2)
+      }
+    })
+  })
+
+  test("each value's marks are drawn on its own detail", () => {
+    VALUES.forEach(({ window }, index) => {
+      const scene = VALUES_FROM + index
+      const notes = NOTES.filter(({ scenes }) => scenes.includes(scene))
+      expect(notes).toHaveLength(1)
+      const points = notes[0]!.marks.flatMap((mark) =>
+        mark.kind === "outline"
+          ? mark.points
+          : mark.kind === "ring" || mark.kind === "cross"
+            ? [mark.at]
+            : [mark.from, mark.to],
+      )
+      expect(points.length).toBeGreaterThan(0)
+      // Every point a mark is drawn through lies inside the value's square.
+      for (const [x, y] of points) {
+        expect(Math.abs(x - window.focus[0])).toBeLessThan(window.span / 2)
+        expect(Math.abs(y - window.focus[1])).toBeLessThan(window.span / 2)
+      }
+    })
   })
 
   test("only the first painting loads first, and only it is described", () => {

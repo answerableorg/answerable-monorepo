@@ -72,9 +72,9 @@ paintings ("keep the lines around the badge, those look nice").
 | Hero, Join | The sun's circle and its two centre lines |
 | Programme | The badge's outline with a square on each corner, its lettering's baseline and capitals' line, the sun's circle |
 | Value 1 | The pen's axis, a cross on its tip |
-| Value 2 | The scale rule's axis |
-| Value 3 | The pointing arm's axis, a cross on the hand |
-| Value 4 | The name plate's outline |
+| Value 2 | The name plate's outline |
+| Value 3 | The scale rule's axis |
+| Value 4 | The pointing arm's axis, a cross on the hand |
 | Value 5 | The envelope's outline, a circle on the seal |
 | Value 6 | The print's outline, the dome's axis |
 | People | None |

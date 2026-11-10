@@ -1,4 +1,4 @@
-import type { Frame, Style } from "@/components/new/frames"
+import type { Fit, Frame, Style } from "@/components/new/frames"
 
 /**
  * Frames of the stage, sampled into keyframes the browser plays against the
@@ -17,6 +17,25 @@ import type { Frame, Style } from "@/components/new/frames"
  * 1,800 gave none).
  */
 export const STEPS = 32
+
+/**
+ * The travel `STEPS` samples hold, in pixels. A straight line between two
+ * samples of an eased glide strays from it by the travel over the square of
+ * the samples: about a quarter pixel at this travel.
+ */
+const REACH = 1000
+
+/**
+ * The samples a transition needs when it carries a picture `travel` pixels
+ * across the screen: `STEPS` up to `REACH`, twice that up to four times
+ * `REACH`, three times up to nine, as the stray goes by the square of the
+ * samples. Always a multiple of `STEPS`, so whatever changes on one of its
+ * samples still does. A small screen, where a picture never travels far,
+ * pays for no more samples than it needs.
+ */
+export function stepsFor(travel: number): number {
+  return STEPS * Math.max(1, Math.ceil(Math.sqrt(travel / REACH)))
+}
 
 /** One element's samples, in scroll order. */
 export type Series = { offsets: number[]; styles: Style[] }
@@ -40,25 +59,28 @@ export function paintingTolerance(size: { w: number; h: number }): Tolerance {
 
 /**
  * Samples `frameAt` at `steps` even points through each segment, both ends
- * included, and at `extra` points (a jump's two sides, say). `offsetOf` maps
- * a point to its place on the timeline, 0 to 1.
+ * included, and at `extra` points (a jump's two sides, say). `steps` is one
+ * number, or each segment's own. `offsetOf` maps a point to its place on the
+ * timeline, 0 to 1.
  */
 export function sample(
   frameAt: (segment: number, t: number) => Frame,
   segments: number,
-  steps: number,
+  steps: number | ((segment: number) => number),
   offsetOf: (segment: number, t: number) => number,
   extra: readonly number[] = [],
 ): Map<string, Series> {
-  const points = [
-    ...new Set([
-      ...Array.from({ length: steps + 1 }, (_, n) => n / steps),
-      ...extra,
-    ]),
-  ].sort((a, b) => a - b)
+  const pointsOf = (count: number) =>
+    [
+      ...new Set([
+        ...Array.from({ length: count + 1 }, (_, n) => n / count),
+        ...extra,
+      ]),
+    ].sort((a, b) => a - b)
   const series = new Map<string, Series>()
   for (let segment = 0; segment < segments; segment++) {
-    for (const t of points) {
+    const count = typeof steps === "number" ? steps : steps(segment)
+    for (const t of pointsOf(count)) {
       const offset = offsetOf(segment, t)
       for (const [key, style] of Object.entries(frameAt(segment, t))) {
         let entry = series.get(key)
@@ -149,20 +171,35 @@ function reduce(
   reduce(series, at, to, keep, tolerance)
 }
 
-/** A style as CSS: `opacity` and a `transform` the compositor can run. */
-export function css(style: Style): { opacity?: string; transform?: string } {
+/**
+ * A style as CSS: `opacity` and a `transform` the compositor can run. An
+ * element laid out at `fit` of the size its scale is for (a painting: `fitOf`
+ * in frames.ts) has its scale divided by it, each way, and lands in the same
+ * place.
+ */
+export function css(
+  style: Style,
+  fit?: Fit,
+): { opacity?: string; transform?: string } {
   const out: { opacity?: string; transform?: string } = {}
   if (style.opacity !== undefined) out.opacity = style.opacity.toFixed(4)
   if (style.x !== undefined || style.y !== undefined || style.s !== undefined) {
-    out.transform = `translate3d(${(style.x ?? 0).toFixed(2)}px, ${(style.y ?? 0).toFixed(2)}px, 0px) scale(${(style.s ?? 1).toFixed(6)})`
+    const s = style.s ?? 1
+    const scale = fit
+      ? `${(s / fit.x).toFixed(6)}, ${(s / fit.y).toFixed(6)}`
+      : s.toFixed(6)
+    out.transform = `translate3d(${(style.x ?? 0).toFixed(2)}px, ${(style.y ?? 0).toFixed(2)}px, 0px) scale(${scale})`
   }
   return out
 }
 
-/** Keyframes for `Element.animate`, from a simplified series. */
-export function keyframes(series: Series): Keyframe[] {
+/**
+ * Keyframes for `Element.animate`, from a simplified series, for an element
+ * laid out at `fit` of the size its scales are for.
+ */
+export function keyframes(series: Series, fit?: Fit): Keyframe[] {
   return series.offsets.map((offset, index) => ({
     offset,
-    ...css(series.styles[index]!),
+    ...css(series.styles[index]!, fit),
   }))
 }

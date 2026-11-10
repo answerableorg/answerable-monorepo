@@ -117,10 +117,11 @@ export type Value = {
 }
 
 /**
- * The six values, each with its detail in the studio panorama (6000×2162),
- * from left to right: drawing a plan by hand, measuring the model, presenting
- * at the easel, the plaque set on the model, a sealed letter handed over, a
- * 3D printer beside a laptop. The square travels along the painting.
+ * The six values, each with its detail in the studio panorama (6000×2162):
+ * drawing a plan by hand, the plaque set on the model, measuring the model,
+ * presenting at the easel, a sealed letter handed over, a 3D printer beside a
+ * laptop. The square travels over the painting from one detail to the next:
+ * right across it to the plaque, back to the rule, then rightwards again.
  */
 export const VALUES: readonly Value[] = [
   {
@@ -131,17 +132,17 @@ export const VALUES: readonly Value[] = [
   {
     text: "We use AI only where we are competent to do so.",
     colour: CORAL,
-    window: { focus: [1600, 1250], span: 1000 },
+    window: { focus: [4350, 1650], span: 1000 },
   },
   {
     text: "We are honest about how we use AI.",
     colour: SKY,
-    window: { focus: [2800, 650], span: 1000 },
+    window: { focus: [1600, 1250], span: 1000 },
   },
   {
     text: "We respect the intellectual and creative work of others.",
     colour: SAND,
-    window: { focus: [4350, 1650], span: 1000 },
+    window: { focus: [2800, 650], span: 1000 },
   },
   {
     text: "We protect the information entrusted to us.",
@@ -337,19 +338,6 @@ export const NOTES: readonly Note[] = [
   {
     scenes: [VALUES_FROM + 1],
     marks: [
-      { kind: "axis", from: [1450, 1496.5], to: [1920, 1451], extend: 60 },
-    ],
-  },
-  {
-    scenes: [VALUES_FROM + 2],
-    marks: [
-      { kind: "axis", from: [2605, 357], to: [2950, 567], extend: 25 },
-      { kind: "cross", at: [2605, 357] },
-    ],
-  },
-  {
-    scenes: [VALUES_FROM + 3],
-    marks: [
       {
         kind: "outline",
         points: [
@@ -359,6 +347,19 @@ export const NOTES: readonly Note[] = [
           [4217, 1850],
         ],
       },
+    ],
+  },
+  {
+    scenes: [VALUES_FROM + 2],
+    marks: [
+      { kind: "axis", from: [1450, 1496.5], to: [1920, 1451], extend: 60 },
+    ],
+  },
+  {
+    scenes: [VALUES_FROM + 3],
+    marks: [
+      { kind: "axis", from: [2605, 357], to: [2950, 567], extend: 25 },
+      { kind: "cross", at: [2605, 357] },
     ],
   },
   {
