@@ -10,7 +10,7 @@ import { COMMA_PATH, COMMA_VIEW_BOX } from "@answerable/ui/lib/logo"
 export function Lockup() {
   return (
     <a
-      href="/new"
+      href="/"
       className="text-[24px]/none font-bold whitespace-nowrap [text-box:trim-both_cap_alphabetic]"
     >
       <svg

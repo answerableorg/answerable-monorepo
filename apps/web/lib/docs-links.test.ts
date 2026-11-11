@@ -59,6 +59,9 @@ pages.set(
 )
 pages.set("/design.md", null)
 
+// The landing page, where /new sends its visitors.
+if (existsSync(join(web, "app/(new)/page.tsx"))) pages.set("/", null)
+
 // OpenAPI pages: /docs/id/<api|admin-api>/<tag, slugified>/<operationId>, as fumadocs-openapi names them.
 for (const [base, contract] of [
   ["/docs/id/api", "apps/id/openapi.json"],
@@ -165,11 +168,22 @@ test("every redirect leaves a page that is gone and arrives at one that exists, 
   expect(wrong).toEqual([])
 })
 
-test("the checker sees the pages it must: MDX pages, OpenAPI operations and the design page", () => {
+test("/new, where the landing page was built, sends its visitors to it, and not for good", async () => {
+  const redirects = (await config.redirects?.()) ?? []
+
+  expect(redirects.find(({ source }) => source === "/new")).toEqual({
+    source: "/new",
+    destination: "/",
+    permanent: false,
+  })
+})
+
+test("the checker sees the pages it must: MDX pages, OpenAPI operations, the design page and the landing page", () => {
   expect(pages.has("/docs")).toBe(true)
   expect(pages.get("/design")).toContain("lines-separators-and-focus")
   expect(pages.get("/design")).toContain("lint")
   expect(pages.has("/design.md")).toBe(true)
+  expect(pages.has("/")).toBe(true)
   expect(
     links("x.mdx", "[the design](/design) and [its file](/design.md)").map(
       ({ link }) => link,

@@ -3,9 +3,10 @@
 @import "fumadocs-ui/css/preset.css";
 @import "fumadocs-openapi/css/preset.css";
 
-/* The /new stage is on: `STAGE_SCRIPT` marked <html> before first paint. */
+/* The landing page's stage is on: `STAGE_SCRIPT` marked <html> before first
+   paint. */
 @custom-variant stage (&:where([data-stage], [data-stage] *));
-/* /new's two shapes: copy beside the picture on wide windows, landscape
+/* The landing page's two shapes: copy beside the picture on wide windows, landscape
    phones included (`cols`), or the picture as a band above it (`band`). The
    zoom panel's `COLUMN_QUERY` is the same query. */
 @custom-variant cols {
@@ -20,31 +21,7 @@
 }
 
 /*
- * Hero mosaic entrance: a quick fade-in, staggered per tile via an inline
- * animation-delay. `backwards` keeps pre-delay tiles invisible without JS.
- */
-@keyframes mosaic-tile-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@layer components {
-  .mosaic-tile {
-    animation: mosaic-tile-in 240ms ease-out backwards;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .mosaic-tile {
-      animation: none;
-    }
-  }
-}
-
-/*
- * The /new splash, about 2.2s from first paint (timings in ms on the
+ * The landing page's splash, about 2.2s from first paint (timings in ms on the
  * animations below): the field alone to 200; three squares at 200, 400 and
  * 600; at 900 the first two fade, the third grows its tail and the row slides
  * to centre until 1300; at 1300 the comma becomes a hole in the field and
@@ -189,7 +166,7 @@
 }
 
 /*
- * The /new stage (components/new/stage.tsx): the root scroller snaps to one
+ * The landing page's stage (components/new/stage.tsx): the root scroller snaps to one
  * snap point a scene, a stride apart, except while a phone's keyboard is up.
  * The stride is the scroll that plays one scene's change. It is short, so two
  * notches of a wheel (100 px each, and a snap wants half the way) or a light

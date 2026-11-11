@@ -1,5 +1,5 @@
 /**
- * The arithmetic of the /new stage: where the scroll is between two scenes,
+ * The arithmetic of the landing page's stage: where the scroll is between two scenes,
  * how a scene's lines move, and where the square window and the paintings
  * sit in the image panel. Pure, so the browser only reads the page and
  * writes styles.

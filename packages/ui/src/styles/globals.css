@@ -84,7 +84,6 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-mosaic-mark: var(--mosaic-mark);
 
   /* One unit scales every `p-*`, `gap-*`, `h-*`, `size-*` and `/n` leading. */
   --spacing: var(--spacing-unit);
@@ -124,11 +123,6 @@
 /* The only ring: a temporary state on `focus-visible`, never a border. */
 @utility focus-ring {
   box-shadow: var(--focus-ring);
-}
-
-/* Library-owned: the mosaic's punctuation marks, a lighter tint of Answerable Grey. */
-:root {
-  --mosaic-mark: #e3e3eb;
 }
 
 /*
@@ -196,7 +190,6 @@
     0 0 0 2px oklch(0 0 0),
     0 0 0 4px oklch(1 0 0)
   );
-  --mosaic-mark: oklch(0.269 0 0);
 }
 
 @layer base {

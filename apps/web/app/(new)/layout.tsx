@@ -10,7 +10,7 @@ import { cn } from "@answerable/ui/lib/utils"
 const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
-  ...createMetadata({ pathname: "/new" }),
+  ...createMetadata({ pathname: "/" }),
   alternates: undefined,
   metadataBase: new URL(SITE.origin),
   title: { default: SITE.name, template: "%s · Answerable" },

@@ -10,10 +10,10 @@ import { buttonVariants } from "@answerable/ui/lib/button"
 import { cn } from "@answerable/ui/lib/utils"
 
 export const metadata = createMetadata({
-  pathname: "/new",
+  pathname: "/",
   title: "Answerable · AI Lead training and accreditation",
   absoluteTitle: true,
-  index: false,
+  index: true,
 })
 
 const structuredData = {

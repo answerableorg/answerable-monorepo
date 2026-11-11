@@ -10,8 +10,8 @@ const config = {
       ignore: [/^\/api\/oauth-test\/callback(?:\?|$)/],
     },
   },
-  // AVIF first, WebP for the rest. /new magnifies its studio painting, so
-  // that one asks for 85. Past 2048 the widths step closely, so a large
+  // AVIF first, WebP for the rest. The landing page magnifies its studio
+  // painting, so that one asks for 85. Past 2048 the widths step closely, so a large
   // screen gets near the width it asks for, up to the studio's full 6,000.
   images: {
     formats: ["image/avif", "image/webp"],
@@ -45,21 +45,25 @@ const config = {
     }))
   },
   // Pages that moved: when the docs were split into Answerable ID, the MCP kit and the Toolbox, and when the MCP
-  // quickstart became "Make an MCP".
+  // quickstart became "Make an MCP". The landing page was built at /new: a temporary redirect, so that the address
+  // can hold the next one.
   async redirects() {
     return [
-      ["/docs/mcp/quickstart", "/docs/mcp/create"],
-      ["/docs/mcp/authoring", "/docs/mcp/tools"],
-      ["/docs/mcp/toolbox", "/docs/toolbox"],
-      ["/docs/mcp/toolbox-admin", "/docs/toolbox/admin"],
-    ].flatMap(([source, destination]) => [
-      { source, destination, permanent: true },
-      {
-        source: `${source}.md`,
-        destination: `${destination}.md`,
-        permanent: true,
-      },
-    ])
+      { source: "/new", destination: "/", permanent: false },
+      ...[
+        ["/docs/mcp/quickstart", "/docs/mcp/create"],
+        ["/docs/mcp/authoring", "/docs/mcp/tools"],
+        ["/docs/mcp/toolbox", "/docs/toolbox"],
+        ["/docs/mcp/toolbox-admin", "/docs/toolbox/admin"],
+      ].flatMap(([source, destination]) => [
+        { source, destination, permanent: true },
+        {
+          source: `${source}.md`,
+          destination: `${destination}.md`,
+          permanent: true,
+        },
+      ]),
+    ]
   },
   async rewrites() {
     return [
