@@ -2,7 +2,7 @@
  * The notes: what the sheet draws on a painting, as a drawing does. A note is
  * written in its painting's pixels and laid out for a measured panel: its
  * marks follow the painting's own lines (an axis, an outline, a circle, a
- * baseline), in hairlines, cut to the picture.
+ * baseline), in lines heavy enough to read over paint, cut to the picture.
  */
 
 import type { PaintingKey, PanelState } from "@/components/new/scenes"
@@ -21,7 +21,10 @@ import {
 type Mark =
   /** A centre line through two points, drawn `extend` past each. */
   | { kind: "axis"; from: Point; to: Point; extend: number }
-  /** A construction line between two points: a baseline, an edge carried on. */
+  /**
+   * A construction line between two points: a baseline, an edge carried on.
+   * Drawn fine, as it may cross what it is drawn for.
+   */
   | { kind: "guide"; from: Point; to: Point }
   /** An object's outline, with a handle at each corner. */
   | { kind: "outline"; points: readonly Point[] }
@@ -29,6 +32,19 @@ type Mark =
   | { kind: "ring"; at: Point; r: number }
   /** A cross on a point. */
   | { kind: "cross"; at: Point }
+  /**
+   * The angle at a point between the line from `from`, which is drawn and
+   * carried `past` the point, and the line to `to`: an arc `r` from the
+   * point, and its size in figures beyond it.
+   */
+  | {
+      kind: "angle"
+      at: Point
+      from: Point
+      to: Point
+      r: number
+      past: number
+    }
 
 /** The marks on the scenes that share one view of a painting. */
 export type Note = { scenes: readonly number[]; marks: readonly Mark[] }
@@ -43,17 +59,38 @@ export type NotePlan = {
   box: Rect
   /** The picture: what is drawn on the painting is clipped to it. */
   clip: Rect
-  /** Hairlines along the painting: outlines, circles and crosses. */
+  /** Lines along the painting: outlines, circles, crosses and angles. */
   construction: string
+  /** Construction lines, drawn fine. */
+  fine: string
   /** Centre lines, drawn as chain lines. */
   axes: string
   /** The squares at an outline's corners. */
   handles: readonly Rect[]
+  /** Figures, each centred on its point. */
+  labels: readonly Label[]
 }
 
+/** A figure and the point it is centred on. */
+type Label = { x: number; y: number; text: string }
+
 /** An outline's handle and a cross's arm, in pixels. */
-const HANDLE = 4
-const ARM = 4.5
+const HANDLE = 7
+export const ARM = 7.5
+/** An angle's figures: their size, how far their middle is from the arc, and
+    the room they take around it. */
+export const FIGURE_FONT = 11
+export const FIGURE_GAP = 13
+const FIGURE_ROOM = 12
+
+/**
+ * How thick a note's lines are, in pixels: about one and a half, a whole
+ * number of device pixels. A hairline is lost on paint; only its construction
+ * lines stay one.
+ */
+export function noteLine(ratio: number) {
+  return Math.max(1, Math.round(1.5 * ratio)) / ratio
+}
 
 const n = (value: number) => String(Math.round(value * 100) / 100)
 
@@ -138,33 +175,61 @@ function squareOn(
   return { x: x - edge, y: y - edge, w: side / ratio, h: side / ratio }
 }
 
+/** An arc about `c`: from the angle `from`, `turn` round (both in radians). */
+type Arc = { c: Point; r: number; from: number; turn: number }
+
 /** What a note draws, in panel pixels, before it is cut to its box. */
 type Drawing = {
   construction: Segment[]
+  fine: Segment[]
   circles: { c: Point; r: number }[]
+  arcs: Arc[]
   axes: Segment[]
   handles: Rect[]
+  labels: Label[]
 }
+
+const onArc = ({ c, r }: Arc, angle: number): Point => [
+  c[0] + r * Math.cos(angle),
+  c[1] + r * Math.sin(angle),
+]
 
 /**
  * Every note laid out for a panel, in the script's order; null where a panel
- * shows nothing of one. Every line is `hair` wide.
+ * shows nothing of one. Every line is `thick` wide, and a construction line
+ * `hair`.
  */
 export function notePlans(
   panel: SheetPanel,
   lat: Lattice,
   script: SheetScript,
+  thick: number,
   hair: number,
 ): (NotePlan | null)[] {
   const { ratio } = panel
   const snap = (value: number) => Math.round(value * ratio) / ratio
-  const crisp = (value: number) => snap(value) + hair / 2
+  const crisp = (value: number, width = thick) => snap(value) + width / 2
   const plans: (NotePlan | null)[] = []
   for (const note of script.notes) {
     const state = script.states[note.scenes[0]!]!
     const g = sceneGeometry(panel, lat, script, state)
     const picture = { x: g.cx - g.w / 2, y: g.cy - g.h / 2, w: g.w, h: g.h }
     const at = ([x, y]: Point): Point => [g.x + x * g.scale, g.y + y * g.scale]
+    /** The line between two of the painting's points, `width` wide; an
+        upright or level one is set on device pixels. */
+    const between = (from: Point, to: Point, width = thick): Segment => {
+      const a = at(from)
+      const b = at(to)
+      if (from[0] === to[0]) {
+        const x = crisp(a[0], width)
+        return { a: [x, a[1]], b: [x, b[1]] }
+      }
+      if (from[1] === to[1]) {
+        const y = crisp(a[1], width)
+        return { a: [a[0], y], b: [b[0], y] }
+      }
+      return { a, b }
+    }
     const inside = ([x, y]: Point, pad: number) =>
       x >= picture.x + pad &&
       x <= picture.x + picture.w - pad &&
@@ -172,22 +237,16 @@ export function notePlans(
       y <= picture.y + picture.h - pad
     const drawing: Drawing = {
       construction: [],
+      fine: [],
       circles: [],
+      arcs: [],
       axes: [],
       handles: [],
+      labels: [],
     }
     for (const mark of note.marks) {
       if (mark.kind === "axis") {
-        let a = at(mark.from)
-        let b = at(mark.to)
-        // Upright and level lines are set on device pixels.
-        if (mark.from[0] === mark.to[0]) {
-          a = [crisp(a[0]), a[1]]
-          b = [a[0], b[1]]
-        } else if (mark.from[1] === mark.to[1]) {
-          a = [a[0], crisp(a[1])]
-          b = [b[0], a[1]]
-        }
+        const { a, b } = between(mark.from, mark.to)
         const k = (mark.extend * g.scale) / Math.hypot(b[0] - a[0], b[1] - a[1])
         const dx = (b[0] - a[0]) * k
         const dy = (b[1] - a[1]) * k
@@ -196,7 +255,7 @@ export function notePlans(
           b: [b[0] + dx, b[1] + dy],
         })
       } else if (mark.kind === "guide") {
-        drawing.construction.push({ a: at(mark.from), b: at(mark.to) })
+        drawing.fine.push(between(mark.from, mark.to, hair))
       } else if (mark.kind === "outline") {
         const points = mark.points.map(at)
         points.forEach((point, index) => {
@@ -206,11 +265,33 @@ export function notePlans(
           })
           if (!inside(point, HANDLE)) return
           drawing.handles.push(
-            squareOn(snap(point[0]), snap(point[1]), HANDLE, hair, ratio),
+            squareOn(snap(point[0]), snap(point[1]), HANDLE, thick, ratio),
           )
         })
       } else if (mark.kind === "ring") {
         drawing.circles.push({ c: at(mark.at), r: mark.r * g.scale })
+      } else if (mark.kind === "angle") {
+        const bearing = (to: Point) =>
+          Math.atan2(to[1] - mark.at[1], to[0] - mark.at[0])
+        const from = bearing(mark.from)
+        // The short way round, under half a turn.
+        let turn = bearing(mark.to) - from
+        if (turn > Math.PI) turn -= 2 * Math.PI
+        if (turn < -Math.PI) turn += 2 * Math.PI
+        // The line the angle is measured from, through the point.
+        const { a, b } = between(mark.from, mark.at)
+        const k = (mark.past * g.scale) / Math.hypot(b[0] - a[0], b[1] - a[1])
+        drawing.construction.push({
+          a,
+          b: [b[0] + (b[0] - a[0]) * k, b[1] + (b[1] - a[1]) * k],
+        })
+        const arc = { c: at(mark.at), r: mark.r * g.scale, from, turn }
+        drawing.arcs.push(arc)
+        const [x, y] = onArc({ ...arc, r: arc.r + FIGURE_GAP }, from + turn / 2)
+        if (inside([x, y], FIGURE_ROOM)) {
+          const degrees = Math.round((Math.abs(turn) * 180) / Math.PI)
+          drawing.labels.push({ x, y, text: `${degrees}°` })
+        }
       } else {
         const [x, y] = at(mark.at)
         const cx = crisp(x)
@@ -254,6 +335,7 @@ function cut(
       return true
     })
   const construction = shown(drawing.construction)
+  const fine = shown(drawing.fine)
   const axes = shown(drawing.axes)
   const circles = drawing.circles.filter(({ c, r }) => {
     const x0 = Math.max(picture.x, c[0] - r)
@@ -265,10 +347,30 @@ function cut(
     box.add(x1, y1, 1)
     return true
   })
+  // An arc, by points along it a twelfth of a turn apart at most.
+  const arcs = drawing.arcs.filter((arc) => {
+    const steps = Math.max(1, Math.ceil(Math.abs(arc.turn) / (Math.PI / 6)))
+    let seen = false
+    for (let step = 0; step <= steps; step++) {
+      const [px, py] = onArc(arc, arc.from + (arc.turn * step) / steps)
+      if (
+        px < picture.x ||
+        px > picture.x + picture.w ||
+        py < picture.y ||
+        py > picture.y + picture.h
+      ) {
+        continue
+      }
+      box.add(px, py, 1)
+      seen = true
+    }
+    return seen
+  })
   for (const rect of drawing.handles) {
     box.add(rect.x, rect.y, 1)
     box.add(rect.x + rect.w, rect.y + rect.h, 1)
   }
+  for (const label of drawing.labels) box.add(label.x, label.y, FIGURE_ROOM)
   const loose = box.rect()
   if (!loose) return null
   // The box's corner is on a device pixel, as its lines are.
@@ -280,6 +382,9 @@ function cut(
   const circle = (c: Point, r: number) =>
     `M${point([c[0] - r, c[1]])}a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0` +
     `a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0`
+  const sweep = (arc: Arc) =>
+    `M${point(onArc(arc, arc.from))}A${n(arc.r)} ${n(arc.r)} 0 0 ` +
+    `${arc.turn > 0 ? 1 : 0} ${point(onArc(arc, arc.from + arc.turn))}`
   const move = (r: Rect): Rect => ({ ...r, x: r.x - x, y: r.y - y })
   return {
     box: rect,
@@ -287,8 +392,15 @@ function cut(
     construction: [
       ...construction.map(line),
       ...circles.map(({ c, r }) => circle(c, r)),
+      ...arcs.map(sweep),
     ].join(""),
+    fine: fine.map(line).join(""),
     axes: axes.map(line).join(""),
     handles: drawing.handles.map(move),
+    labels: drawing.labels.map((label) => ({
+      ...label,
+      x: label.x - x,
+      y: label.y - y,
+    })),
   }
 }

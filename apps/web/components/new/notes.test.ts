@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
-import { notePlans, sceneGeometry } from "@/components/new/notes"
+import {
+  ARM,
+  FIGURE_GAP,
+  noteLine,
+  notePlans,
+  sceneGeometry,
+} from "@/components/new/notes"
 import { SCRIPT } from "@/components/new/scenes"
 import {
   sheetPlan,
@@ -43,6 +49,10 @@ function drawn(panel: SheetPanel, plan: SheetPlan) {
 const NUMBER = "(-?\\d+(?:\\.\\d+)?)"
 const LINE = new RegExp(`M${NUMBER} ${NUMBER}L${NUMBER} ${NUMBER}`, "g")
 const CIRCLE = new RegExp(`M${NUMBER} ${NUMBER}a${NUMBER} `, "g")
+const SWEEP = new RegExp(
+  `M${NUMBER} ${NUMBER}A${NUMBER} ${NUMBER} 0 0 [01] ${NUMBER} ${NUMBER}`,
+  "g",
+)
 
 /** A path's straight lines, on the panel. */
 function lines(path: string, corner: { x: number; y: number }) {
@@ -123,12 +133,28 @@ describe("the notes' plans", () => {
     const line = `M${number} ${number}L${number} ${number}`
     const arc = `a${number} ${number} 0 1 0 ${number} 0`
     const circle = `M${number} ${number}${arc}${arc}`
+    const sweep = `M${number} ${number}A${number} ${number} 0 0 [01] ${number} ${number}`
     for (const { laid } of drawn(panel, plan)) {
       expect(laid.axes).toMatch(new RegExp(`^(?:${line})*$`))
+      expect(laid.fine).toMatch(new RegExp(`^(?:${line})*$`))
       expect(laid.construction).toMatch(
-        new RegExp(`^(?:${line})*(?:${circle})*$`),
+        new RegExp(`^(?:${line})*(?:${circle})*(?:${sweep})*$`),
       )
-      expect(laid.axes.length + laid.construction.length).toBeGreaterThan(0)
+      expect(
+        laid.axes.length + laid.fine.length + laid.construction.length,
+      ).toBeGreaterThan(0)
+    }
+  })
+
+  test("a note's line is about a pixel and a half, in whole device pixels", () => {
+    expect(noteLine(1)).toBe(2)
+    expect(noteLine(1.5)).toBeCloseTo(4 / 3, 9)
+    expect(noteLine(2)).toBe(1.5)
+    expect(noteLine(3)).toBeCloseTo(5 / 3, 9)
+    // And a construction line stays the lattice's hairline.
+    for (const [, panel, plan] of each) {
+      expect(plan.note).toBe(noteLine(panel.ratio))
+      expect(plan.note).toBeGreaterThan(plan.hair)
     }
   })
 })
@@ -164,7 +190,7 @@ describe("the notes' marks", () => {
               ),
             ),
           )
-          expect(miss).toBeLessThanOrEqual(plan.hair + 0.01)
+          expect(miss).toBeLessThanOrEqual(plan.note + 0.01)
         }
       }
     },
@@ -205,8 +231,8 @@ describe("the notes' marks", () => {
             const to = at(mark.to)
             const span = Math.hypot(to[0] - from[0], to[1] - from[1])
             return (
-              off(from, a, b) <= plan.hair &&
-              off(to, a, b) <= plan.hair &&
+              off(from, a, b) <= plan.note &&
+              off(to, a, b) <= plan.note &&
               Math.abs(length - span - 2 * mark.extend * g.scale) < 0.05
             )
           })
@@ -215,14 +241,98 @@ describe("the notes' marks", () => {
           // two.
           if (axis!.from[0] === axis!.to[0]) {
             expect(a[0]).toBe(b[0])
-            expect(whole(a[0] - plan.hair / 2, ratio)).toBe(true)
+            expect(whole(a[0] - plan.note / 2, ratio)).toBe(true)
           }
           if (axis!.from[1] === axis!.to[1]) {
             expect(a[1]).toBe(b[1])
-            expect(whole(a[1] - plan.hair / 2, ratio)).toBe(true)
+            expect(whole(a[1] - plan.note / 2, ratio)).toBe(true)
           }
         }
       }
+    },
+  )
+
+  test.each(each)(
+    "%s: a construction line is fine, and runs through its points",
+    (_, panel, plan) => {
+      let guides = 0
+      for (const { note, laid, at } of drawn(panel, plan)) {
+        const marks = note.marks.filter((mark) => mark.kind === "guide")
+        const shown = lines(laid.fine, laid.box)
+        expect(shown.length).toBeLessThanOrEqual(marks.length)
+        guides += shown.length
+        for (const { a, b } of shown) {
+          const guide = marks.find(
+            (mark) =>
+              off(at(mark.from), a, b) < 0.02 && off(at(mark.to), a, b) < 0.02,
+          )
+          expect(guide).toBeDefined()
+        }
+      }
+      // The badge's lettering lines, on every panel.
+      expect(guides).toBe(2)
+    },
+  )
+
+  test.each(each)(
+    "%s: the pen's angle is an arc from the table's line to the pen's, with its size in figures",
+    (_, panel, plan) => {
+      const angles = drawn(panel, plan).flatMap(({ note, laid, g, at }) =>
+        note.marks.flatMap((mark) =>
+          mark.kind === "angle" ? [{ mark, laid, g, at }] : [],
+        ),
+      )
+      // One, on the first value, on every panel.
+      expect(angles.length).toBe(1)
+      const { mark, laid, g, at } = angles[0]!
+      const tip = at(mark.at)
+      const far = (point: Point) =>
+        Math.hypot(point[0] - tip[0], point[1] - tip[1])
+
+      const sweeps = [...laid.construction.matchAll(SWEEP)]
+      expect(sweeps.length).toBe(1)
+      const [x0, y0, r, , x1, y1] = sweeps[0]!.slice(1).map(Number) as [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ]
+      const start: Point = [laid.box.x + x0, laid.box.y + y0]
+      const end: Point = [laid.box.x + x1, laid.box.y + y1]
+      expect(Math.abs(r - mark.r * g.scale)).toBeLessThan(0.01)
+      // From the table's line, level through the tip, to the pen's.
+      expect(Math.abs(start[1] - tip[1])).toBeLessThan(0.02)
+      expect(Math.abs(far(start) - r)).toBeLessThan(0.02)
+      expect(off(end, tip, at(mark.to))).toBeLessThan(0.02)
+      expect(Math.abs(far(end) - r)).toBeLessThan(0.02)
+
+      // The table's line: level, on a device pixel, from its far end to past
+      // the tip.
+      const table = lines(laid.construction, laid.box).filter(
+        ({ a, b }) => a[1] === b[1] && b[0] - a[0] > 2 * ARM + 1,
+      )
+      expect(table.length).toBe(1)
+      const { a, b } = table[0]!
+      expect(whole(a[1] - plan.note / 2, panel.ratio)).toBe(true)
+      expect(Math.abs(a[1] - tip[1])).toBeLessThanOrEqual(plan.note)
+      expect(Math.abs(a[0] - at(mark.from)[0])).toBeLessThan(0.02)
+      expect(Math.abs(b[0] - tip[0] - mark.past * g.scale)).toBeLessThan(0.02)
+
+      // Its size in whole degrees, beyond the arc, as far from one line as
+      // from the other.
+      expect(laid.labels.map((label) => label.text)).toEqual(["56°"])
+      const figures: Point = [
+        laid.box.x + laid.labels[0]!.x,
+        laid.box.y + laid.labels[0]!.y,
+      ]
+      expect(Math.abs(far(figures) - r - FIGURE_GAP)).toBeLessThan(0.02)
+      expect(
+        Math.abs(
+          Math.abs(figures[1] - tip[1]) - off(figures, tip, at(mark.to)),
+        ),
+      ).toBeLessThan(0.02)
     },
   )
 
@@ -233,21 +343,22 @@ describe("the notes' marks", () => {
       const points = note.marks.flatMap((mark) =>
         mark.kind === "cross" ? [at(mark.at)] : [],
       )
-      // Its level arm: nine pixels long, which no outline's side is.
+      // Its level arm: twice `ARM` long, which no outline's side and no
+      // angle's line is.
       const level = lines(laid.construction, laid.box).filter(
-        ({ a, b }) => a[1] === b[1] && Math.abs(b[0] - a[0] - 9) < 1e-6,
+        ({ a, b }) => a[1] === b[1] && Math.abs(b[0] - a[0] - 2 * ARM) < 1e-6,
       )
       expect(level.length).toBeLessThanOrEqual(points.length)
       crosses += level.length
       for (const { a, b } of level) {
-        expect(whole(a[1] - plan.hair / 2, ratio)).toBe(true)
+        expect(whole(a[1] - plan.note / 2, ratio)).toBe(true)
         const centre: Point = [(a[0] + b[0]) / 2, a[1]]
         const miss = Math.min(
           ...points.map(([x, y]) =>
             Math.max(Math.abs(x - centre[0]), Math.abs(y - centre[1])),
           ),
         )
-        expect(miss).toBeLessThanOrEqual(plan.hair + 0.01)
+        expect(miss).toBeLessThanOrEqual(plan.note + 0.01)
       }
     }
     // One on the first value's line and one on the third's, on every panel.
@@ -267,6 +378,7 @@ describe("the notes' marks", () => {
           SCRIPT.notes[1]!,
         ],
       },
+      plan.note,
       plan.hair,
     )
     expect(plans[0]).toBeNull()
@@ -302,6 +414,7 @@ describe("the notes' marks", () => {
           },
         ],
       },
+      plan.note,
       plan.hair,
     )
     expect(laid!.handles.length).toBe(1)

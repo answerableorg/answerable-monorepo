@@ -10,7 +10,7 @@ import {
 } from "react"
 
 import { fitOf, sheetOf, SHUTTERS, type Layout } from "@/components/new/frames"
-import type { NotePlan } from "@/components/new/notes"
+import { FIGURE_FONT, type NotePlan } from "@/components/new/notes"
 import {
   COLUMN_QUERY,
   PAINTINGS,
@@ -171,14 +171,14 @@ function decodeAhead(image: HTMLImageElement) {
 /**
  * The sheet's colours, all see-through so that they sit back over white and
  * over a painting alike: the lattice's sky, the drawing's ink, the ink a
- * little stronger for words, which are too small to read at a line's weight,
- * and stronger again for the notes, which are drawn over paint.
+ * little stronger for words, which are too small to read at a line's weight.
+ * The notes alone are solid: they are drawn over paint, and have to be seen.
  */
 const SHEET_COLOURS = {
   "--sheet-lattice": "rgb(140 200 220 / 0.45)",
   "--sheet-ink": "rgb(39 71 214 / 0.34)",
   "--sheet-text": "rgb(39 71 214 / 0.58)",
-  "--sheet-note": "rgb(39 71 214 / 0.75)",
+  "--sheet-note": "rgb(39 71 214)",
 } as CSSProperties
 
 /**
@@ -390,7 +390,11 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
           style={{ opacity: 0 }}
         >
           {plan?.notes[order] && (
-            <NoteDrawing note={plan.notes[order]} hair={plan.hair} />
+            <NoteDrawing
+              note={plan.notes[order]}
+              line={plan.note}
+              hair={plan.hair}
+            />
           )}
         </div>
       ))}
@@ -398,11 +402,25 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
   )
 }
 
+/** How far a note's white casing shows on each side of its line, in pixels. */
+const CASING = 1
+
 /**
- * A note, drawn in its box: hairlines along the painting, cut to the picture,
- * and a small square at each corner of an outline.
+ * A note, drawn in its box: lines along the painting, cut to the picture, a
+ * square at each corner of an outline, and an angle's size in figures. Each
+ * line lies on a white one a little wider, and the figures on a white edge,
+ * which lift them off the paint, dark or light; a construction line is a
+ * hairline with no white under it, as it may cross what it is drawn for.
  */
-function NoteDrawing({ note, hair }: { note: NotePlan; hair: number }) {
+function NoteDrawing({
+  note,
+  line,
+  hair,
+}: {
+  note: NotePlan
+  line: number
+  hair: number
+}) {
   const { box, clip } = note
   return (
     <svg
@@ -417,17 +435,38 @@ function NoteDrawing({ note, hair }: { note: NotePlan; hair: number }) {
         width={clip.w}
         height={clip.h}
         viewBox={`${clip.x} ${clip.y} ${clip.w} ${clip.h}`}
-        stroke="var(--sheet-note)"
-        strokeWidth={hair}
       >
-        <path d={note.axes} strokeDasharray="10 3 1.5 3" />
-        <path d={note.construction} />
+        <g stroke="white" strokeOpacity={0.55} strokeWidth={line + 2 * CASING}>
+          <path d={note.axes} />
+          <path d={note.construction} />
+        </g>
+        <g stroke="var(--sheet-note)" strokeWidth={line}>
+          <path d={note.fine} strokeWidth={hair} />
+          <path d={note.axes} strokeDasharray="12 4 2 4" />
+          <path d={note.construction} />
+        </g>
+        <g
+          fill="var(--sheet-note)"
+          stroke="white"
+          strokeWidth={3}
+          strokeLinejoin="round"
+          paintOrder="stroke"
+          fontSize={FIGURE_FONT}
+          fontWeight={600}
+          textAnchor="middle"
+        >
+          {note.labels.map((label) => (
+            <text key={label.text} x={label.x} y={label.y} dy="0.36em">
+              {label.text}
+            </text>
+          ))}
+        </g>
       </svg>
       {note.handles.map((rect) => (
         <g key={`${rect.x} ${rect.y}`} shapeRendering="crispEdges">
           <rect {...size(rect, 0)} fill="white" />
           <rect {...size(rect, 0)} fill="var(--sheet-note)" />
-          <rect {...size(rect, hair)} fill="white" />
+          <rect {...size(rect, line)} fill="white" />
         </g>
       ))}
     </svg>

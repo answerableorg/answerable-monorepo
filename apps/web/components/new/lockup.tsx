@@ -9,6 +9,9 @@ import { COMMA_PATH, COMMA_VIEW_BOX } from "@answerable/ui/lib/logo"
  */
 export function Lockup() {
   return (
+    // A full load, not a client navigation: the page starts again, from its
+    // splash, as it did at /new.
+    // eslint-disable-next-line @next/next/no-html-link-for-pages
     <a
       href="/"
       className="text-[24px]/none font-bold whitespace-nowrap [text-box:trim-both_cap_alphabetic]"

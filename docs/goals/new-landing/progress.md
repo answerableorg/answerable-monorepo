@@ -143,3 +143,13 @@
 - Frames, worst per scroll: WebKit phone, 220 scrolls between values (the seven changes and the longest pan there and back): 214 with every frame under 25 ms, six with one or two long frames (26 to 124 ms, four of them in the first eleven scrolls after the load), on a Mac at a load of 11 to 13. WebKit desktop 33 of 35 under 25 ms, two with 30 and 38 ms. Chromium 17 ms, two stray 33s on the phone.
 - Gates: typecheck, lint, web tests 305 pass, build. Not landed: on `claude/new-landing-r7` with round 7, waiting on the owner. Not measured on a real iPhone or in Firefox.
 - Owner approved on 2026-11-10 ("Land on main", "push to prod too"). Rounds 7 and 8 landed on main together (`61f51b9f`, `e17bb51d`), after typecheck, lint, the web tests, the full build and knip on that tree. Production is Vercel's deployment of main; no ship tag is involved.
+
+## 2026-11-11, round 9: the landing page at /, stronger marks, the pen's angle
+
+- Owner: "/new to be the main / url on prod"; the marks on the details "a bit too small / discreet", "a bit more visible"; at the pen's tip "a visible angle that appears (angle compared to the table for instance)"; nothing on main before their green light.
+- The page is `app/(new)/page.tsx` now, served at `/`, indexed, canonical `/`. `/new` redirects to `/` with a 307, not a 308, so the address can hold the next landing page. The logo links to `/`.
+- The old home page is gone with what only it used: the mosaic (component, dither shader, layout, capture, script, source photograph, `public/mosaic`, the `--mosaic-mark` token), the expandable sections, the email-only waitlist form and its action, and `@paper-design/shaders-react`. `bunx knip` lists nothing.
+- Marks (`notes.ts`, `zoom-panel.tsx`): lines about 1.5 px (a whole number of device pixels; they were a hairline, half a pixel on a sharp screen), solid ink (it was 75%), each on a white line 1 px wider a side; squares 7 px (4), crosses 15 px (9). The badge's two lettering lines stay hairlines: at the new weight they crossed out its words.
+- The pen's angle: a new `angle` mark draws the table's line through the tip, an arc to the pen's axis and its size in whole degrees, 56°, from the geometry.
+- Looked at in Playwright Chromium and WebKit at 1440 by 900 and 393 by 852, every scene, on the development server. Frame times not measured again: no element was added to what the scroll moves.
+- Gates: typecheck, lint, web tests, build, knip. Not landed: on `claude/new-landing-r9`, waiting on the owner.

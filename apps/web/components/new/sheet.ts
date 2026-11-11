@@ -10,7 +10,7 @@
  */
 
 import type { Script } from "@/components/new/frames"
-import { notePlans, type NotePlan } from "@/components/new/notes"
+import { noteLine, notePlans, type NotePlan } from "@/components/new/notes"
 import {
   clamp,
   lattice,
@@ -39,6 +39,8 @@ export type SheetPlan = {
   hair: number
   /** The frame's and the rules' thickness. */
   ink: number
+  /** The thickness of the lines drawn on the paintings. */
+  note: number
   /** The lattice's inner lines, as one path of filled rectangles. */
   lines: string
   /** The frame, the strip's lines and the ticks, as one filled path. */
@@ -311,6 +313,7 @@ export function sheetPlan(panel: SheetPanel, script: SheetScript): SheetPlan {
   const { columns, rows, xs, ys, bottom } = lat
   const hair = Math.max(1, Math.round(ratio / 2)) / ratio
   const ink = Math.max(1, Math.round(ratio)) / ratio
+  const note = noteLine(ratio)
   const x0 = xs[0]!
   const x1 = xs[columns]!
   const y0 = ys[0]!
@@ -367,6 +370,7 @@ export function sheetPlan(panel: SheetPanel, script: SheetScript): SheetPlan {
     lattice: lat,
     hair,
     ink,
+    note,
     lines,
     frame,
     zones,
@@ -378,6 +382,6 @@ export function sheetPlan(panel: SheetPanel, script: SheetScript): SheetPlan {
     },
     strip: title,
     commas: commas(panel, lat),
-    notes: notePlans(panel, lat, script, hair),
+    notes: notePlans(panel, lat, script, note, hair),
   }
 }

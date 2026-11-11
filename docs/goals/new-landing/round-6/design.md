@@ -58,20 +58,28 @@ picture:
 | Mark | Drawn as |
 | ---- | -------- |
 | `axis` | A centre line through two points of a feature, carried past each end, as a chain line |
-| `guide` | A construction line between two points: a baseline, an edge carried on |
+| `guide` | A construction line between two points: a baseline, an edge carried on; a hairline, as it may cross what it is drawn for |
 | `outline` | A feature's corners joined, an open square on each: a shape shown as built |
 | `ring` | A circle |
 | `cross` | A cross on a point |
+| `angle` | The angle at a point between two lines: the line it is measured from, an arc, and its size in degrees |
 
 There are no pointing lines and no labels: the owner removed them on
 2026-11-09 ("remove the pointing lines"), and kept the marks on the
-paintings ("keep the lines around the badge, those look nice").
+paintings ("keep the lines around the badge, those look nice"). The one
+figure is the pen's angle to the table (owner, 2026-11-11: "a visible
+angle that appears").
+
+The marks are meant to be seen (owner, 2026-11-11: "a bit too small /
+discreet"): about 1.5 px thick, a whole number of device pixels, in solid
+ink on a white line 1 px wider each side, with 7 px squares on an outline's
+corners and 15 px crosses. Only a `guide` stays a hairline.
 
 | Scene | On the painting |
 | ----- | --------------- |
 | Hero, Join | The sun's circle and its two centre lines |
 | Programme | The badge's outline with a square on each corner, its lettering's baseline and capitals' line, the sun's circle |
-| Value 1 | The pen's axis, a cross on its tip |
+| Value 1 | The pen's axis, a cross on its tip, the table's line under it and the angle between them (56°) |
 | Value 2 | The name plate's outline |
 | Value 3 | The scale rule's axis |
 | Value 4 | The pointing arm's axis, a cross on the hand |
@@ -85,14 +93,15 @@ and while it shows it moves with its painting (one transform).
 ## Colours
 
 The sheet must not take power from the paintings (owner, 2026-11-09: "the
-colors are not good, too visible"). Every line is see-through:
+colors are not good, too visible"). Every line of the sheet is see-through;
+the marks on a painting alone are solid:
 
 | Token | Value | Used for |
 | ----- | ----- | -------- |
 | `--sheet-lattice` | `rgb(140 200 220 / 0.45)` | The lattice |
 | `--sheet-ink` | `rgb(39 71 214 / 0.34)` | Frame, rules, ticks, strip lines |
 | `--sheet-text` | `rgb(39 71 214 / 0.58)` | Strip and zone text |
-| `--sheet-note` | `rgb(39 71 214 / 0.75)` | Marks on a painting |
+| `--sheet-note` | `rgb(39 71 214)` | Marks on a painting |
 
 ## The copy beside the picture
 

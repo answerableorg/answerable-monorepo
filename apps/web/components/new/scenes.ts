@@ -332,6 +332,15 @@ export const NOTES: readonly Note[] = [
     scenes: [VALUES_FROM],
     marks: [
       { kind: "axis", from: [925, 1772], to: [1081, 2001], extend: 40 },
+      // The table under the pen's tip, and the pen's angle to it.
+      {
+        kind: "angle",
+        at: [1081, 2001],
+        from: [841, 2001],
+        to: [925, 1772],
+        r: 170,
+        past: 50,
+      },
       { kind: "cross", at: [1081, 2001] },
     ],
   },
