@@ -89,8 +89,10 @@ corners and 15 px crosses. Only a `guide` stays a hairline.
 | Value 6 | The print's outline, the dome's axis |
 | People | None |
 
-A note fades out in the first 5/32 of a change and in over the last 5/32,
-and while it shows it moves with its painting (one transform).
+Since round 10 the scroll does not place a note (`round-10/design.md`): it
+is laid out where its painting rests, switched on once its scene has
+arrived, each mark drawn as one stroke, and switched off as soon as the
+scroll leaves the scene's rest.
 
 ## Colours
 

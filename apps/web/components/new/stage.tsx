@@ -12,6 +12,7 @@ import {
   fitOf,
   frameAt,
   KINKS,
+  REST,
   travelAt,
   type Layout,
 } from "@/components/new/frames"
@@ -42,6 +43,13 @@ const LINE_TRAVEL = 24
 const SMOOTH_REACH = 2
 /** Rebuilds while the window resizes come at most this often, in ms. */
 const REBUILD_EVERY = 120
+/**
+ * A scene has arrived when the scroll has been still this long, in ms, this
+ * near it, in strides: inside the band where nothing moves (`REST`), so its
+ * notes are off before the picture starts to.
+ */
+const ARRIVAL = 140
+const NEAR = REST * 0.8
 
 /** The scroll timeline, where the browser has one (not in lib.dom yet). */
 type ScrollTimelineClass = new (options: {
@@ -168,6 +176,8 @@ export function Stage({
     let builtAt = 0
     let railIndex = -1
     let valueIndex = -1
+    let noted = -1
+    let arrivalTimer = 0
 
     // The script driver sets a style only when it changes.
     let written = new WeakMap<Element, Record<string, string>>()
@@ -296,6 +306,7 @@ export function Stage({
       }
       if (!timeline) draw(target)
       mark(target)
+      moved(target)
     }
     const requestBuild = () => {
       if (buildTimer) return
@@ -343,6 +354,34 @@ export function Stage({
       }
     }
 
+    // The notes are not the scroll's: a scene's are switched on, and drawn,
+    // once the scroll has rested on it, and off as soon as it leaves.
+    const sceneNear = (progress: number) => {
+      const scene = Math.round(progress)
+      return Math.abs(progress - scene) <= NEAR ? scene % SCENE_COUNT : -1
+    }
+    const note = (scene: number) => {
+      if (scene === noted) return
+      noted = scene
+      panel.show(scene < 0 ? null : scene)
+    }
+    const arrive = () => {
+      arrivalTimer = 0
+      if (frozen) return
+      // Under the splash nothing is seen arriving: after it.
+      if (document.querySelector(".splash")) return awaitArrival()
+      note(sceneNear(read()))
+    }
+    const awaitArrival = () => {
+      window.clearTimeout(arrivalTimer)
+      arrivalTimer = window.setTimeout(arrive, ARRIVAL)
+    }
+    /** The scroll is at `progress`: off with the notes of a scene it left. */
+    const moved = (progress: number) => {
+      if (sceneNear(progress) !== noted) note(-1)
+      awaitArrival()
+    }
+
     // The script driver draws once a frame at exactly the scroll's position.
     const tick = () => {
       frame = 0
@@ -358,6 +397,7 @@ export function Stage({
       frame = 0
       if (!timeline) draw(target)
       mark(target)
+      moved(target)
     }
 
     /**
@@ -377,6 +417,7 @@ export function Stage({
       if (frozen) return
       target = read()
       mark(target)
+      moved(target)
       schedule()
       window.clearTimeout(settleTimer)
       settleTimer = window.setTimeout(settle, 180)
@@ -531,6 +572,8 @@ export function Stage({
       cancelAnimationFrame(frame)
       window.clearTimeout(settleTimer)
       window.clearTimeout(buildTimer)
+      window.clearTimeout(arrivalTimer)
+      panel.show(null)
       html.removeAttribute("data-engine")
       html.removeAttribute("data-frozen")
     }

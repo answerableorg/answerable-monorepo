@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import {
+  useId,
   useImperativeHandle,
   useRef,
   useState,
@@ -10,7 +11,7 @@ import {
 } from "react"
 
 import { fitOf, sheetOf, SHUTTERS, type Layout } from "@/components/new/frames"
-import { FIGURE_FONT, type NotePlan } from "@/components/new/notes"
+import { FIGURE_FONT, type NotePlan, type Stroke } from "@/components/new/notes"
 import {
   COLUMN_QUERY,
   PAINTINGS,
@@ -21,6 +22,7 @@ import {
   type Person,
 } from "@/components/new/scenes"
 import { SHEET_COMMA, ZONE_FONT, type SheetPlan } from "@/components/new/sheet"
+import { clamp, type Rect } from "@/lib/stage-math"
 import { cn } from "@answerable/ui/lib/utils"
 
 export type ZoomPanelHandle = {
@@ -31,6 +33,11 @@ export type ZoomPanelHandle = {
   measure: () => Layout["panel"]
   /** The parts the stage's frames move, by key (see `frames.ts`). */
   targets: () => Map<string, HTMLElement | SVGElement>
+  /**
+   * Switches on the notes of a scene that has arrived, which draws them, and
+   * every other note off; `null` switches all of them off.
+   */
+  show: (scene: number | null) => void
 }
 
 /**
@@ -156,7 +163,6 @@ function panelTargets(parts: Parts) {
   parts.words.forEach((words, scene) => add(`strip:${scene}`, words))
   add("keyplan", parts.keyplan)
   add("keyplan:window", parts.square)
-  parts.notes.forEach((note, order) => add(`note:${order}`, note))
   return targets
 }
 
@@ -229,6 +235,14 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
         return panel
       },
       targets: () => panelTargets(partsRef.current),
+      show: (scene) => {
+        partsRef.current.notes.forEach((element, order) =>
+          element?.toggleAttribute(
+            "data-on",
+            scene !== null && SCRIPT.notes[order]!.scenes.includes(scene),
+          ),
+        )
+      },
     }),
     [],
   )
@@ -378,26 +392,28 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
         />
       ))}
 
-      {/* What the sheet draws on the paintings, over everything else. */}
-      {SCRIPT.notes.map((note, order) => (
-        <div
-          key={note.scenes.join()}
-          ref={(element) => {
-            partsRef.current.notes[order] = element
-          }}
-          aria-hidden="true"
-          className="pointer-events-none absolute top-0 left-0 origin-top-left will-change-[transform,opacity]"
-          style={{ opacity: 0 }}
-        >
-          {plan?.notes[order] && (
-            <NoteDrawing
-              note={plan.notes[order]}
-              line={plan.note}
-              hair={plan.hair}
-            />
-          )}
-        </div>
-      ))}
+      {/* What the sheet draws on the paintings, over everything else: each
+          note where its painting rests on its scenes, hidden until the stage
+          switches it on (`show`), then drawn (`.note-*` in globals.css). */}
+      {SCRIPT.notes.map((note, order) => {
+        const laid = plan?.notes[order]
+        return (
+          <div
+            key={note.scenes.join()}
+            ref={(element) => {
+              partsRef.current.notes[order] = element
+            }}
+            data-note
+            aria-hidden="true"
+            className="pointer-events-none absolute"
+            style={laid ? { left: laid.box.x, top: laid.box.y } : undefined}
+          >
+            {laid && plan && (
+              <NoteDrawing note={laid} line={plan.note} hair={plan.hair} />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -406,11 +422,33 @@ export function ZoomPanel({ ref }: { ref: Ref<ZoomPanelHandle> }) {
 const CASING = 1
 
 /**
+ * When a note's strokes are drawn, in milliseconds from its scene's arrival:
+ * the first after a beat, so the picture is seen first and the marks are seen
+ * to be laid over it; the next marks a little apart; each at a pen's pace,
+ * neither a flick nor a crawl.
+ */
+const DRAW = { beat: 160, apart: 140, pace: 2.2, least: 320, most: 900 }
+const drawn = (stroke: Stroke) => ({
+  at: DRAW.beat + stroke.step * DRAW.apart,
+  takes: clamp(stroke.length * DRAW.pace, DRAW.least, DRAW.most),
+})
+const timed = (at: number, takes?: number) =>
+  ({
+    "--at": `${Math.round(at)}ms`,
+    ...(takes ? { "--for": `${Math.round(takes)}ms` } : {}),
+  }) as CSSProperties
+
+/**
  * A note, drawn in its box: lines along the painting, cut to the picture, a
- * square at each corner of an outline, and an angle's size in figures. Each
- * line lies on a white one a little wider, and the figures on a white edge,
- * which lift them off the paint, dark or light; a construction line is a
- * hairline with no white under it, as it may cross what it is drawn for.
+ * square at each corner of an outline, and an angle's or a length's size in
+ * figures. Each line lies on a white one a little wider, and the figures on a
+ * white edge, which lift them off the paint, dark or light; a construction
+ * line is a hairline with no white under it, as it may cross what it is drawn
+ * for.
+ *
+ * Each stroke is a path of length 1 that a dash uncovers from its first point
+ * to its last (`note-draw`); a chain line keeps its dashes still and is
+ * uncovered through a mask drawn the same way.
  */
 function NoteDrawing({
   note,
@@ -421,7 +459,13 @@ function NoteDrawing({
   line: number
   hair: number
 }) {
+  const id = useId()
   const { box, clip } = note
+  const cased = line + 2 * CASING
+  const times = new Map(
+    note.strokes.map((stroke) => [stroke.step, drawn(stroke)]),
+  )
+  const when = (step: number) => times.get(step) ?? { at: DRAW.beat, takes: 0 }
   return (
     <svg
       className="block overflow-visible"
@@ -436,15 +480,70 @@ function NoteDrawing({
         height={clip.h}
         viewBox={`${clip.x} ${clip.y} ${clip.w} ${clip.h}`}
       >
-        <g stroke="white" strokeOpacity={0.55} strokeWidth={line + 2 * CASING}>
-          <path d={note.axes} />
-          <path d={note.construction} />
-        </g>
-        <g stroke="var(--sheet-note)" strokeWidth={line}>
-          <path d={note.fine} strokeWidth={hair} />
-          <path d={note.axes} strokeDasharray="12 4 2 4" />
-          <path d={note.construction} />
-        </g>
+        {note.strokes.map((stroke) => {
+          const { at, takes } = drawn(stroke)
+          const key = `${stroke.step}${stroke.kind}`
+          const pen = {
+            className: "note-stroke",
+            pathLength: 1,
+            d: stroke.path,
+            style: timed(at, takes),
+          }
+          if (stroke.kind === "fine") {
+            return (
+              <path
+                key={key}
+                {...pen}
+                stroke="var(--sheet-note)"
+                strokeWidth={hair}
+              />
+            )
+          }
+          if (stroke.kind === "chain") {
+            // The mask's box is set here, around the line: a level line's own
+            // has no height, and a small mask costs a frame little.
+            const { reach } = stroke
+            return (
+              <g key={key}>
+                <mask
+                  id={`${id}${key}`}
+                  maskUnits="userSpaceOnUse"
+                  x={reach.x - cased}
+                  y={reach.y - cased}
+                  width={reach.w + 2 * cased}
+                  height={reach.h + 2 * cased}
+                >
+                  <path {...pen} stroke="white" strokeWidth={cased + 2} />
+                </mask>
+                <g mask={`url(#${id}${key})`}>
+                  <path
+                    d={stroke.path}
+                    stroke="white"
+                    strokeOpacity={0.55}
+                    strokeWidth={cased}
+                  />
+                  <path
+                    d={stroke.path}
+                    stroke="var(--sheet-note)"
+                    strokeWidth={line}
+                    strokeDasharray="12 4 2 4"
+                  />
+                </g>
+              </g>
+            )
+          }
+          return (
+            <g key={key}>
+              <path
+                {...pen}
+                stroke="white"
+                strokeOpacity={0.55}
+                strokeWidth={cased}
+              />
+              <path {...pen} stroke="var(--sheet-note)" strokeWidth={line} />
+            </g>
+          )
+        })}
         <g
           fill="var(--sheet-note)"
           stroke="white"
@@ -455,32 +554,47 @@ function NoteDrawing({
           fontWeight={600}
           textAnchor="middle"
         >
-          {note.labels.map((label) => (
-            <text
-              key={label.text}
-              x={label.x}
-              y={label.y}
-              dy="0.36em"
-              transform={`rotate(${label.turn.toFixed(2)} ${label.x} ${label.y})`}
-            >
-              {label.text}
-            </text>
-          ))}
+          {note.labels.map((label) => {
+            // Figures come when their line is nearly done.
+            const { at, takes } = when(label.step)
+            return (
+              <text
+                key={label.text}
+                className="note-figure"
+                style={timed(at + takes * 0.8)}
+                x={label.x}
+                y={label.y}
+                dy="0.36em"
+                transform={`rotate(${label.turn.toFixed(2)} ${label.x} ${label.y})`}
+              >
+                {label.text}
+              </text>
+            )
+          })}
         </g>
       </svg>
-      {note.handles.map((rect) => (
-        <g key={`${rect.x} ${rect.y}`} shapeRendering="crispEdges">
-          <rect {...size(rect, 0)} fill="white" />
-          <rect {...size(rect, 0)} fill="var(--sheet-note)" />
-          <rect {...size(rect, line)} fill="white" />
-        </g>
-      ))}
+      {note.handles.map((rect) => {
+        // A square comes as its outline's stroke reaches its corner.
+        const { at, takes } = when(rect.step)
+        return (
+          <g
+            key={`${rect.x} ${rect.y}`}
+            className="note-handle"
+            style={timed(at + takes * rect.along)}
+            shapeRendering="crispEdges"
+          >
+            <rect {...size(rect, 0)} fill="white" />
+            <rect {...size(rect, 0)} fill="var(--sheet-note)" />
+            <rect {...size(rect, line)} fill="white" />
+          </g>
+        )
+      })}
     </svg>
   )
 }
 
 /** A rectangle's attributes, drawn in by `inset` on every side. */
-const size = ({ x, y, w, h }: NotePlan["handles"][number], inset: number) => ({
+const size = ({ x, y, w, h }: Rect, inset: number) => ({
   x: x + inset,
   y: y + inset,
   width: w - 2 * inset,

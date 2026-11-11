@@ -21,9 +21,12 @@ export const STEPS = 32
 /**
  * The travel `STEPS` samples hold, in pixels. A straight line between two
  * samples of an eased glide strays from it by the travel over the square of
- * the samples: about a quarter pixel at this travel.
+ * the samples: about a quarter pixel at this travel. Three quarters of a
+ * change's samples fall in the glide, the rest where it stands still
+ * (`REST` in frames.ts), so this is nine sixteenths of the 1,000 px that all
+ * of them would hold.
  */
-const REACH = 1000
+const REACH = 560
 
 /**
  * The samples a transition needs when it carries a picture `travel` pixels

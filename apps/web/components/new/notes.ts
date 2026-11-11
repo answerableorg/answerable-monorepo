@@ -3,6 +3,8 @@
  * written in its painting's pixels and laid out for a measured panel: its
  * marks follow the painting's own lines (an axis, an outline, a circle, a
  * baseline), in lines heavy enough to read over paint, cut to the picture.
+ * Each mark is one stroke, which the page draws from its first point to its
+ * last once the scene has arrived.
  */
 
 import type { PaintingKey, PanelState } from "@/components/new/scenes"
@@ -12,7 +14,6 @@ import {
   windowGeometry,
   type Geometry,
   type Lattice,
-  type Placement,
   type Point,
   type Rect,
 } from "@/lib/stage-math"
@@ -66,27 +67,41 @@ export type Note = { scenes: readonly number[]; marks: readonly Mark[] }
 export type NotePlan = {
   scenes: readonly number[]
   painting: PaintingKey
-  /** The painting's placement the note is drawn for: it follows from there. */
-  origin: Placement
   /** Its element's box on the panel. */
   box: Rect
   /** The picture: what is drawn on the painting is clipped to it. */
   clip: Rect
-  /** Lines along the painting: outlines, circles, crosses and angles. */
-  construction: string
-  /** Construction lines, drawn fine. */
-  fine: string
-  /** Centre lines, drawn as chain lines. */
-  axes: string
+  /** What it draws, a stroke a mark, in the order the marks are drawn. */
+  strokes: readonly Stroke[]
   /** The squares at an outline's corners. */
-  handles: readonly Rect[]
+  handles: readonly Handle[]
   /** Figures, each centred on its point. */
   labels: readonly Label[]
 }
 
-/** Figures, the point they are centred on, and how far round they are turned,
-    in degrees. */
-type Label = { x: number; y: number; text: string; turn: number }
+/** One mark's lines, drawn in one go from the first point to the last. */
+export type Stroke = {
+  /** Which of the note's marks it is. */
+  step: number
+  /**
+   * A line along the painting (an outline, a circle, a cross, an angle, a
+   * dimension), a centre line, drawn as a chain line, or a construction line,
+   * drawn fine.
+   */
+  kind: "line" | "chain" | "fine"
+  path: string
+  /** How long it is, in pixels. */
+  length: number
+  /** The box its lines' ends lie in, from the note's corner. */
+  reach: Rect
+}
+
+/** A square on a corner of mark `step`, reached `along` its stroke (0 to 1). */
+type Handle = Rect & { step: number; along: number }
+
+/** Figures of mark `step`, the point they are centred on, and how far round
+    they are turned, in degrees. */
+type Label = { x: number; y: number; text: string; turn: number; step: number }
 
 /** An outline's handle and a cross's arm, in pixels. */
 const HANDLE = 7
@@ -127,7 +142,8 @@ export function sceneGeometry(
     : openGeometry(image, layout, lat)
 }
 
-type Segment = { a: Point; b: Point }
+/** `step`: which of its note's marks a piece of a drawing belongs to. */
+type Segment = { a: Point; b: Point; step?: number }
 
 /** The part of a segment inside a rectangle (Liang–Barsky), or null. */
 function clipSegment({ a, b }: Segment, r: Rect): Segment | null {
@@ -195,16 +211,16 @@ function squareOn(
 }
 
 /** An arc about `c`: from the angle `from`, `turn` round (both in radians). */
-type Arc = { c: Point; r: number; from: number; turn: number }
+type Arc = { c: Point; r: number; from: number; turn: number; step?: number }
 
 /** What a note draws, in panel pixels, before it is cut to its box. */
 type Drawing = {
   construction: Segment[]
   fine: Segment[]
-  circles: { c: Point; r: number }[]
+  circles: { c: Point; r: number; step?: number }[]
   arcs: Arc[]
   axes: Segment[]
-  handles: Rect[]
+  handles: Handle[]
   labels: Label[]
 }
 
@@ -263,7 +279,11 @@ export function notePlans(
       handles: [],
       labels: [],
     }
-    for (const mark of note.marks) {
+    note.marks.forEach((mark, step) => {
+      const { construction, fine, circles, arcs, axes } = drawing
+      const before = [construction, fine, circles, arcs, axes].map(
+        (pieces) => pieces.length,
+      )
       if (mark.kind === "axis") {
         const { a, b } = between(mark.from, mark.to)
         const k = (mark.extend * g.scale) / Math.hypot(b[0] - a[0], b[1] - a[1])
@@ -283,9 +303,11 @@ export function notePlans(
             b: points[(index + 1) % points.length]!,
           })
           if (!inside(point, HANDLE)) return
-          drawing.handles.push(
-            squareOn(snap(point[0]), snap(point[1]), HANDLE, thick, ratio),
-          )
+          drawing.handles.push({
+            ...squareOn(snap(point[0]), snap(point[1]), HANDLE, thick, ratio),
+            step,
+            along: index / points.length,
+          })
         })
       } else if (mark.kind === "ring") {
         drawing.circles.push({ c: at(mark.at), r: mark.r * g.scale })
@@ -309,7 +331,7 @@ export function notePlans(
         const [x, y] = onArc({ ...arc, r: arc.r + FIGURE_GAP }, from + turn / 2)
         if (inside([x, y], FIGURE_ROOM)) {
           const degrees = Math.round((Math.abs(turn) * 180) / Math.PI)
-          drawing.labels.push({ x, y, text: `${degrees}°`, turn: 0 })
+          drawing.labels.push({ x, y, text: `${degrees}°`, turn: 0, step })
         }
       } else if (mark.kind === "dimension") {
         const a = at(mark.from)
@@ -342,7 +364,7 @@ export function notePlans(
           let turn = (Math.atan2(u[1], u[0]) * 180) / Math.PI
           if (turn > 90) turn -= 180
           if (turn <= -90) turn += 180
-          drawing.labels.push({ x, y, text: mark.text, turn })
+          drawing.labels.push({ x, y, text: mark.text, turn, step })
         }
       } else {
         const [x, y] = at(mark.at)
@@ -353,15 +375,14 @@ export function notePlans(
           { a: [cx, cy - ARM], b: [cx, cy + ARM] },
         )
       }
-    }
+      // What the mark added is its stroke.
+      ;[construction, fine, circles, arcs, axes].forEach((pieces, index) => {
+        for (const piece of pieces.slice(before[index])) piece.step = step
+      })
+    })
     const plan = cut(drawing, picture, ratio)
     plans.push(
-      plan && {
-        scenes: note.scenes,
-        painting: state.painting,
-        origin: { x: g.x, y: g.y, scale: g.scale },
-        ...plan,
-      },
+      plan && { scenes: note.scenes, painting: state.painting, ...plan },
     )
   }
   return plans
@@ -376,7 +397,7 @@ function cut(
   drawing: Drawing,
   picture: Rect,
   ratio: number,
-): Omit<NotePlan, "scenes" | "painting" | "origin"> | null {
+): Omit<NotePlan, "scenes" | "painting"> | null {
   const box = bounds()
   const shown = (segments: Segment[]) =>
     segments.filter((segment) => {
@@ -439,17 +460,71 @@ function cut(
   const sweep = (arc: Arc) =>
     `M${point(onArc(arc, arc.from))}A${n(arc.r)} ${n(arc.r)} 0 0 ` +
     `${arc.turn > 0 ? 1 : 0} ${point(onArc(arc, arc.from + arc.turn))}`
-  const move = (r: Rect): Rect => ({ ...r, x: r.x - x, y: r.y - y })
+  const move = <T extends Rect>(r: T): T => ({ ...r, x: r.x - x, y: r.y - y })
+  const long = ({ a, b }: Segment) => Math.hypot(b[0] - a[0], b[1] - a[1])
+  // A stroke a mark and a kind: its pieces one after the other.
+  const strokes: Stroke[] = []
+  const steps = [construction, fine, axes, circles, arcs]
+    .flat()
+    .map((piece) => piece.step!)
+  for (const step of [...new Set(steps)].sort((a, b) => a - b)) {
+    const of = <T extends { step?: number }>(pieces: T[]) =>
+      pieces.filter((piece) => piece.step === step)
+    type Piece = { path: string; length: number; ends: Point[] }
+    const straight = (s: Segment): Piece => ({
+      path: line(s),
+      length: long(s),
+      ends: [s.a, s.b],
+    })
+    const kinds: [Stroke["kind"], Piece[]][] = [
+      ["fine", of(fine).map(straight)],
+      ["chain", of(axes).map(straight)],
+      [
+        "line",
+        [
+          ...of(construction).map(straight),
+          ...of(circles).map(({ c, r }) => ({
+            path: circle(c, r),
+            length: 2 * Math.PI * r,
+            ends: [
+              [c[0] - r, c[1] - r] as Point,
+              [c[0] + r, c[1] + r] as Point,
+            ],
+          })),
+          ...of(arcs).map((arc) => ({
+            path: sweep(arc),
+            length: Math.abs(arc.turn) * arc.r,
+            ends: [
+              [arc.c[0] - arc.r, arc.c[1] - arc.r] as Point,
+              [arc.c[0] + arc.r, arc.c[1] + arc.r] as Point,
+            ],
+          })),
+        ],
+      ],
+    ]
+    for (const [kind, pieces] of kinds) {
+      if (!pieces.length) continue
+      const ends = pieces.flatMap((piece) => piece.ends)
+      const left = Math.min(...ends.map((end) => end[0]))
+      const top = Math.min(...ends.map((end) => end[1]))
+      strokes.push({
+        step,
+        kind,
+        path: pieces.map((piece) => piece.path).join(""),
+        length: pieces.reduce((sum, piece) => sum + piece.length, 0),
+        reach: {
+          x: left - x,
+          y: top - y,
+          w: Math.max(...ends.map((end) => end[0])) - left,
+          h: Math.max(...ends.map((end) => end[1])) - top,
+        },
+      })
+    }
+  }
   return {
     box: rect,
     clip: move(picture),
-    construction: [
-      ...construction.map(line),
-      ...circles.map(({ c, r }) => circle(c, r)),
-      ...arcs.map(sweep),
-    ].join(""),
-    fine: fine.map(line).join(""),
-    axes: axes.map(line).join(""),
+    strokes,
     handles: drawing.handles.map(move),
     labels: drawing.labels.map((label) => ({
       ...label,

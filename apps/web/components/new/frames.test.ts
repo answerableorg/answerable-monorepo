@@ -5,6 +5,7 @@ import {
   frameAt,
   GHOST,
   latticeOf,
+  REST,
   sheetOf,
   travelAt,
   type Frame,
@@ -256,8 +257,15 @@ describe("unit: the stage's frames", () => {
       const [fromX, fromY, fromScale] = placed(at(7, measured), "studio")
       const [toX, toY, toScale] = placed(at(2, measured), "studio")
       for (let n = 0; n <= 300; n++) {
-        const u = n / 300
-        const frame = at((8 + u * 3) % SCENE_COUNT, measured)
+        const progress = 8 + (n / 300) * 3
+        const frame = at(progress % SCENE_COUNT, measured)
+        // Still within the rest at either end of each change, as everything.
+        const scene = Math.min(Math.floor(progress), 10)
+        const moved = Math.min(
+          Math.max((progress - scene - REST) / (1 - 2 * REST), 0),
+          1,
+        )
+        const u = (scene + moved - 8) / 3
         const [x, y, scale] = placed(frame, "studio")
         expect(x).toBeCloseTo(fromX! + (toX! - fromX!) * u, 6)
         expect(y).toBeCloseTo(fromY! + (toY! - fromY!) * u, 6)
@@ -633,147 +641,44 @@ describe("unit: the title strip's frames", () => {
   })
 })
 
-describe("unit: the notes' frames", () => {
-  /** A note's frame for each of the script's notes. */
-  const notes = (frame: Frame) =>
-    NOTES.map((_, order) => frame[`note:${order}`]!)
-  /** Finer than `POSITIONS`: a note's fade is five thirty-seconds long. */
-  const FINE = Array.from({ length: SCENE_COUNT * 160 + 1 }, (_, n) => n / 160)
-
-  test("every note has a whole frame at every position, on every panel", () => {
+describe("unit: the rest around a scene", () => {
+  test("within an eighth of a stride of a scene the whole frame is the scene's", () => {
+    expect(REST).toBe(1 / 8)
     for (const panel of PANELS) {
       for (const reduced of [false, true]) {
-        for (const progress of POSITIONS) {
-          for (const note of notes(at(progress, layout(reduced, panel)))) {
-            // The timeline keeps one series a key: a gap would leave a hole.
-            expect(Object.keys(note).sort()).toEqual(["opacity", "s", "x", "y"])
+        const measured = layout(reduced, panel)
+        for (let scene = 0; scene < SCENE_COUNT; scene++) {
+          const rest = frameAt(SCRIPT, measured, scene, 0)
+          const next = frameAt(SCRIPT, measured, scene, 1)
+          for (const t of [0.01, 0.05, 0.1, REST]) {
+            expect(frameAt(SCRIPT, measured, scene, t)).toEqual(rest)
+            expect(frameAt(SCRIPT, measured, scene, 1 - t)).toEqual(next)
           }
         }
       }
     }
   })
 
-  test("at rest, a note shows on its scenes only, where it was drawn", () => {
-    for (const panel of PANELS) {
-      const plans = sheetOf(SCRIPT, panel).notes
-      const measured = layout(false, panel)
-      for (let scene = 0; scene < SCENE_COUNT; scene++) {
-        notes(at(scene, measured)).forEach((note, order) => {
-          const plan = plans[order]
-          const shows = !!plan && plan.scenes.includes(scene)
-          expect(note.opacity).toBe(shows ? 1 : 0)
-          if (!shows) return
-          expect(note.x).toBeCloseTo(plan.box.x, 6)
-          expect(note.y).toBeCloseTo(plan.box.y, 6)
-          expect(note.s).toBeCloseTo(1, 9)
-        })
-      }
-      // The loop ends where it starts.
-      notes(at(SCENE_COUNT, measured)).forEach((note, order) => {
-        const first = notes(at(0, measured))[order]!
-        expect(note.opacity).toBe(first.opacity!)
-        expect(note.x).toBeCloseTo(first.x!, 6)
-        expect(note.y).toBeCloseTo(first.y!, 6)
-      })
+  test("past the rest the change has begun, and halfway it is neither scene", () => {
+    for (let scene = 0; scene < SCENE_COUNT; scene++) {
+      const rest = frameAt(SCRIPT, layout(), scene, 0)
+      const next = frameAt(SCRIPT, layout(), scene, 1)
+      expect(frameAt(SCRIPT, layout(), scene, REST + 0.05)).not.toEqual(rest)
+      expect(frameAt(SCRIPT, layout(), scene, 1 - REST - 0.05)).not.toEqual(
+        next,
+      )
+      // Halfway through the scroll is halfway through the change.
+      expect(frameAt(SCRIPT, layout(), scene, 0.5)).not.toEqual(rest)
+      expect(frameAt(SCRIPT, layout(), scene, 0.5)).not.toEqual(next)
     }
   })
 
-  test("a note goes with its scene's first move and comes with the next one's last", () => {
-    const plans = sheetOf(SCRIPT, PANELS[0]).notes
-    let last: Frame | null = null
-    for (const progress of FINE) {
-      const frame = at(progress)
-      const segment = Math.min(Math.floor(progress), SCENE_COUNT - 1)
-      const t = progress - segment
-      const next = (segment + 1) % SCENE_COUNT
-      notes(frame).forEach((note, order) => {
-        const plan = plans[order]!
-        const here = plan.scenes.includes(segment)
-        const there = plan.scenes.includes(next)
-        if (here && there) return expect(note.opacity).toBe(1)
-        // Out by five thirty-seconds of the way, back from twenty-seven.
-        if (t >= 5 / 32 && t <= 27 / 32) expect(note.opacity).toBe(0)
-        if (!here && !there) expect(note.opacity).toBe(0)
-        // It only fades one way inside a transition.
-        const before = last && t > 0 ? last[`note:${order}`]!.opacity! : null
-        if (before === null) return
-        if (here) expect(note.opacity!).toBeLessThanOrEqual(before + 1e-9)
-        if (there) expect(note.opacity!).toBeGreaterThanOrEqual(before - 1e-9)
-      })
-      last = frame
-    }
-  })
-
-  test("two notes never show at once, on any panel", () => {
+  test("no frame places a note: the scroll does not move the marks", () => {
     for (const panel of PANELS) {
-      for (const reduced of [false, true]) {
-        for (const progress of FINE) {
-          const showing = notes(at(progress, layout(reduced, panel)))
-          expect(
-            showing.filter((note) => note.opacity! > 0).length,
-          ).toBeLessThan(2)
-        }
-      }
-    }
-  })
-
-  test("while it shows, a note stays on its painting", () => {
-    for (const panel of PANELS) {
-      const plans = sheetOf(SCRIPT, panel).notes
-      for (const progress of FINE) {
-        const frame = at(progress, layout(false, panel))
-        notes(frame).forEach((note, order) => {
-          const plan = plans[order]
-          if (!plan || note.opacity === 0) return
-          const painting = frame[`painting:${plan.painting}`]!
-          // Never over a painting more see-through than its lines.
-          expect(painting.opacity!).toBeGreaterThanOrEqual(note.opacity!)
-          // Scaled and moved as its painting is, from where it was drawn.
-          const k = painting.s! / plan.origin.scale
-          expect(note.s).toBeCloseTo(k, 9)
-          expect(note.x).toBeCloseTo(
-            painting.x! + (plan.box.x - plan.origin.x) * k,
-            6,
-          )
-          expect(note.y).toBeCloseTo(
-            painting.y! + (plan.box.y - plan.origin.y) * k,
-            6,
-          )
-        })
-      }
-    }
-  })
-
-  test("reduced motion never moves a note", () => {
-    for (const panel of PANELS) {
-      const plans = sheetOf(SCRIPT, panel).notes
       for (const progress of POSITIONS) {
-        const frame = at(progress, layout(true, panel))
-        notes(frame).forEach((note, order) => {
-          const plan = plans[order]
-          if (!plan) return expect(note.opacity).toBe(0)
-          expect(note).toMatchObject({ x: plan.box.x, y: plan.box.y, s: 1 })
-          // It cuts with the panel, through white.
-          const scene = Math.round(progress) % SCENE_COUNT
-          expect(note.opacity).toBe(
-            plan.scenes.includes(scene) ? frame.panel!.opacity! : 0,
-          )
-        })
+        const keys = Object.keys(at(progress, layout(false, panel)))
+        expect(keys.filter((key) => key.startsWith("note"))).toEqual([])
       }
-    }
-  })
-
-  test("a panel that crops a note's detail away keeps its frame, unseen", () => {
-    // The short phone's band cuts the sun off the meeting.
-    const short = layout(false, PANELS[4])
-    expect(sheetOf(SCRIPT, PANELS[4]).notes[0]).toBeNull()
-    for (const progress of POSITIONS) {
-      expect(at(progress, short)["note:0"]).toEqual({
-        opacity: 0,
-        x: 0,
-        y: 0,
-        s: 1,
-      })
     }
   })
 })

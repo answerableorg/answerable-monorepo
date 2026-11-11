@@ -187,6 +187,86 @@ html[data-stage] {
 html[data-stage][data-frozen] {
   scroll-snap-type: none;
 }
+
+/*
+ * The marks on a painting (components/new/zoom-panel.tsx). A note is hidden
+ * until its scene has arrived and the stage switches it on. Then each stroke,
+ * a path of length 1, is drawn from its first point to its last by a dash
+ * that uncovers it; `--at` is when it starts and `--for` how long it takes.
+ * An outline's squares pop in as the stroke passes, and figures fade in when
+ * their line is done. Switched off, a note is gone at once: the picture is
+ * about to move. With reduced motion nothing is drawn: the marks fade in.
+ */
+[data-note] {
+  visibility: hidden;
+}
+[data-note][data-on] {
+  visibility: visible;
+}
+.note-stroke {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+.note-handle,
+.note-figure {
+  opacity: 0;
+}
+.note-handle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+[data-note][data-on] .note-stroke {
+  animation: note-draw var(--for, 500ms) cubic-bezier(0.3, 0, 0.2, 1)
+    var(--at, 0ms) forwards;
+}
+[data-note][data-on] .note-handle {
+  animation: note-pop 180ms cubic-bezier(0.2, 0, 0, 1) var(--at, 0ms) forwards;
+}
+[data-note][data-on] .note-figure {
+  animation: note-show 220ms linear var(--at, 0ms) forwards;
+}
+@keyframes note-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes note-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes note-show {
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-stroke {
+    stroke-dashoffset: 0;
+  }
+  .note-handle,
+  .note-figure {
+    opacity: 1;
+  }
+  [data-note][data-on] .note-stroke,
+  [data-note][data-on] .note-handle,
+  [data-note][data-on] .note-figure {
+    animation: none;
+  }
+  [data-note][data-on] {
+    animation: note-in 200ms linear;
+  }
+}
+@keyframes note-in {
+  from {
+    opacity: 0;
+  }
+}
 html[data-stage]:not([data-engine]) [data-scene]:not([data-from="0"]) {
   opacity: 0;
 }

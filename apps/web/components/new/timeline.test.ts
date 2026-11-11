@@ -55,10 +55,10 @@ describe("unit: the timeline's keyframes", () => {
 
   test("a transition gets more samples by the square root of its travel", () => {
     expect(stepsFor(0)).toBe(STEPS)
-    expect(stepsFor(1000)).toBe(STEPS)
-    expect(stepsFor(1001)).toBe(2 * STEPS)
-    expect(stepsFor(4000)).toBe(2 * STEPS)
-    expect(stepsFor(4001)).toBe(3 * STEPS)
+    expect(stepsFor(560)).toBe(STEPS)
+    expect(stepsFor(561)).toBe(2 * STEPS)
+    expect(stepsFor(2240)).toBe(2 * STEPS)
+    expect(stepsFor(2241)).toBe(3 * STEPS)
   })
 
   test("keeps a jump between segments as two keyframes at one offset", () => {
@@ -222,11 +222,10 @@ describe("unit: the stage's timeline", () => {
         .filter(([key]) => /^(strip|keyplan)/.test(key))
         .reduce((sum, [, entry]) => sum + simplify(entry).offsets.length, 0)
       expect(strip).toBeLessThan(120)
-      // A note fades with its scene and follows its painting while it shows.
-      const notes = [...series]
-        .filter(([key]) => key.startsWith("note:"))
-        .reduce((sum, [, entry]) => sum + simplify(entry).offsets.length, 0)
-      expect(notes).toBeLessThan(130)
+      // The scroll moves no note: they are drawn once a scene has arrived.
+      expect(
+        [...series.keys()].filter((key) => key.startsWith("note")),
+      ).toEqual([])
 
       const along = (simple: Series, offset: number, key: "x" | "y" | "s") => {
         const { offsets, styles } = simple

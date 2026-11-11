@@ -50,7 +50,6 @@ export type Style = {
  *   `half:<n>` a person's white half and `comma:<n>` their photograph.
  * - `strip:<scene>` a scene's words in the title strip; `keyplan` the key
  *   plan beside them and `keyplan:window` the square on it.
- * - `note:<n>` what the sheet points out on a scene, moved with its painting.
  */
 export type Frame = Record<string, Style>
 
@@ -68,8 +67,15 @@ export const SHUTTERS = ["top", "right", "bottom", "left"] as const
  * 60 ms, measured on the second time round the page).
  */
 export const GHOST = 0.002
-/** A panel transition rests still for this share of the scroll at either end. */
-const REST = 0.02
+/**
+ * A change rests still for this share of the scroll at either end, everything
+ * in it: within an eighth of a stride of a snap point the page shows the
+ * scene, whole. A phone can rest that far from where its page has snapped (a
+ * toolbar that hides is about that tall), and a browser that plays some of
+ * the page's animations from one of the two positions and some from the
+ * other then still draws one scene.
+ */
+export const REST = 1 / 8
 /**
  * Where a transition's curve has a corner: the ends of its rest, and the
  * halfway point where the portraits hand over from white to photograph (and
@@ -204,15 +210,13 @@ export function fitOf(script: Script, panel: Panel): Record<PaintingKey, Fit> {
 }
 
 /**
- * Where in a transition the title strip changes its words: the old ones go
- * just before halfway and the new ones come just after, each on samples of
- * the timeline, so the two are never read at once.
+ * Where in a change the title strip changes its words: the old ones go just
+ * before halfway and the new ones come just after, so the two are never read
+ * at once. In the change's own time, between its rests: a third to a half is
+ * 12/32 to 16/32 of the scroll, on samples of the timeline.
  */
-const WORDS_OUT = [11 / 32, 16 / 32] as const
-const WORDS_IN = [16 / 32, 21 / 32] as const
-/** When a scene's notes are gone, and when the next one's start to show. */
-const NOTE_OUT = 5 / 32
-const NOTE_IN = 27 / 32
+const WORDS_OUT = [1 / 3, 1 / 2] as const
+const WORDS_IN = [1 / 2, 2 / 3] as const
 /** From 0 to 1 between two points, in a straight line. */
 const ramp = (from: number, to: number, x: number) =>
   clamp((x - from) / (to - from), 0, 1)
@@ -228,7 +232,9 @@ export function frameAt(
   t: number,
 ): Frame {
   const frame: Frame = {}
-  const progress = segment + t
+  // Still at either end; the change plays in between.
+  const moved = clamp((t - REST) / (1 - 2 * REST), 0, 1)
+  const progress = segment + moved
   const { reduced } = layout
 
   layout.scenes.forEach((scene, sceneIndex) => {
@@ -246,7 +252,7 @@ export function frameAt(
 
   if (layout.values) valuesFrame(frame, layout.values, progress, reduced)
   if (layout.panel && layout.panel.size.w > 0 && layout.panel.size.h > 0) {
-    panelFrame(frame, script, layout.panel, segment, t, reduced)
+    panelFrame(frame, script, layout.panel, segment, moved, reduced)
   }
   return frame
 }
@@ -357,7 +363,7 @@ function panelFrame(
     opacity = clamp(Math.abs(f - 0.5) * 2.5, 0, 1)
     f = f < 0.5 ? 0 : 1
   }
-  const step = scrub((f - REST) / (1 - 2 * REST))
+  const step = scrub(f)
   // The portraits come in two fades, so a face never shows over a painting:
   // arriving, the white halves cover the panel in the first half, then the
   // photographs appear on them while the painting behind changes, unseen;
@@ -542,44 +548,6 @@ function panelFrame(
       s: lerp(start.w, end.w, e) / near(0).w,
     }
   }
-
-  // The notes: each is drawn for its painting at rest on its scenes. It goes
-  // with the scene's first move and comes with the next one's last, and it
-  // follows its painting meanwhile, so a line never leaves what it points at.
-  sheetOf(script, panel).notes.forEach((note, order) => {
-    const key = `note:${order}`
-    if (!note) {
-      frame[key] = { opacity: 0, x: 0, y: 0, s: 1 }
-      return
-    }
-    const here = note.scenes.includes(index)
-    const there = note.scenes.includes(next)
-    const rest = { x: note.box.x, y: note.box.y, s: 1 }
-    if (reduced) {
-      frame[key] = { opacity: (f === 0 ? here : there) ? opacity : 0, ...rest }
-      return
-    }
-    const stays = here && there
-    const shown = stays
-      ? 1
-      : here
-        ? 1 - ramp(REST, NOTE_OUT, t)
-        : there
-          ? ramp(NOTE_IN, 1 - REST, t)
-          : 0
-    if (!stays && !(here && t <= NOTE_OUT) && !(there && t >= NOTE_IN)) {
-      frame[key] = { opacity: shown, ...rest }
-      return
-    }
-    const placement = at.get(note.painting)!
-    const k = placement.scale / note.origin.scale
-    frame[key] = {
-      opacity: shown,
-      x: placement.x + (note.box.x - note.origin.x) * k,
-      y: placement.y + (note.box.y - note.origin.y) * k,
-      s: k,
-    }
-  })
 }
 
 /** The picture the shutters frame: a rectangle, by its centre. */

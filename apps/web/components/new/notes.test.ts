@@ -8,6 +8,8 @@ import {
   noteLine,
   notePlans,
   sceneGeometry,
+  type NotePlan,
+  type Stroke,
 } from "@/components/new/notes"
 import { SCRIPT } from "@/components/new/scenes"
 import {
@@ -55,6 +57,13 @@ const SWEEP = new RegExp(
   `M${NUMBER} ${NUMBER}A${NUMBER} ${NUMBER} 0 0 [01] ${NUMBER} ${NUMBER}`,
   "g",
 )
+
+/** Every stroke of one kind in a note, as one path. */
+const path = (laid: NotePlan, kind: Stroke["kind"]) =>
+  laid.strokes
+    .filter((stroke) => stroke.kind === kind)
+    .map((stroke) => stroke.path)
+    .join("")
 
 /** A path's straight lines, on the panel. */
 function lines(path: string, corner: { x: number; y: number }) {
@@ -137,14 +146,12 @@ describe("the notes' plans", () => {
     const circle = `M${number} ${number}${arc}${arc}`
     const sweep = `M${number} ${number}A${number} ${number} 0 0 [01] ${number} ${number}`
     for (const { laid } of drawn(panel, plan)) {
-      expect(laid.axes).toMatch(new RegExp(`^(?:${line})*$`))
-      expect(laid.fine).toMatch(new RegExp(`^(?:${line})*$`))
-      expect(laid.construction).toMatch(
-        new RegExp(`^(?:${line})*(?:${circle})*(?:${sweep})*$`),
+      expect(path(laid, "chain")).toMatch(new RegExp(`^(?:${line})*$`))
+      expect(path(laid, "fine")).toMatch(new RegExp(`^(?:${line})*$`))
+      expect(path(laid, "line")).toMatch(
+        new RegExp(`^(?:${line}|${circle}|${sweep})*$`),
       )
-      expect(
-        laid.axes.length + laid.fine.length + laid.construction.length,
-      ).toBeGreaterThan(0)
+      expect(laid.strokes.length).toBeGreaterThan(0)
     }
   })
 
@@ -159,6 +166,56 @@ describe("the notes' plans", () => {
       expect(plan.note).toBeGreaterThan(plan.hair)
     }
   })
+})
+
+describe("the notes' strokes", () => {
+  test.each(each)(
+    "%s: a mark is one stroke, in the order the marks are drawn",
+    (_, panel, plan) => {
+      for (const { note, laid } of drawn(panel, plan)) {
+        const steps = laid.strokes.map((stroke) => stroke.step)
+        expect(steps).toEqual([...new Set(steps)].sort((a, b) => a - b))
+        for (const stroke of laid.strokes) {
+          const mark = note.marks[stroke.step]!
+          expect(stroke.kind).toBe(
+            mark.kind === "axis"
+              ? "chain"
+              : mark.kind === "guide"
+                ? "fine"
+                : "line",
+          )
+          // As long as its lines, end to end; a circle is its circumference.
+          const straight = lines(stroke.path, laid.box).reduce(
+            (sum, { a, b }) => sum + Math.hypot(b[0] - a[0], b[1] - a[1]),
+            0,
+          )
+          expect(stroke.length).toBeGreaterThanOrEqual(straight - 0.05)
+          expect(stroke.length).toBeGreaterThan(0)
+          // Its reach holds every end of its lines.
+          for (const { a, b } of lines(stroke.path, { x: 0, y: 0 })) {
+            for (const [x, y] of [a, b]) {
+              expect(x).toBeGreaterThanOrEqual(stroke.reach.x - 0.01)
+              expect(x).toBeLessThanOrEqual(
+                stroke.reach.x + stroke.reach.w + 0.01,
+              )
+              expect(y).toBeGreaterThanOrEqual(stroke.reach.y - 0.01)
+              expect(y).toBeLessThanOrEqual(
+                stroke.reach.y + stroke.reach.h + 0.01,
+              )
+            }
+          }
+        }
+        // What belongs to a mark comes with its stroke.
+        for (const piece of [...laid.handles, ...laid.labels]) {
+          expect(steps).toContain(piece.step)
+        }
+        for (const handle of laid.handles) {
+          expect(handle.along).toBeGreaterThanOrEqual(0)
+          expect(handle.along).toBeLessThan(1)
+        }
+      }
+    },
+  )
 })
 
 describe("the notes' marks", () => {
@@ -201,7 +258,7 @@ describe("the notes' marks", () => {
   test.each(each)("%s: a circle is the painting's own", (_, panel, plan) => {
     for (const { note, laid, g, at } of drawn(panel, plan)) {
       const rings = note.marks.filter((mark) => mark.kind === "ring")
-      const circles = [...laid.construction.matchAll(CIRCLE)]
+      const circles = [...path(laid, "line").matchAll(CIRCLE)]
       expect(circles.length).toBeLessThanOrEqual(rings.length)
       for (const match of circles) {
         const [x, y, r] = match.slice(1).map(Number) as [number, number, number]
@@ -224,7 +281,7 @@ describe("the notes' marks", () => {
       const { ratio } = panel
       for (const { note, laid, g, at } of drawn(panel, plan)) {
         const axes = note.marks.filter((mark) => mark.kind === "axis")
-        const shown = lines(laid.axes, laid.box)
+        const shown = lines(path(laid, "chain"), laid.box)
         expect(shown.length).toBeLessThanOrEqual(axes.length)
         for (const { a, b } of shown) {
           const length = Math.hypot(b[0] - a[0], b[1] - a[1])
@@ -260,7 +317,7 @@ describe("the notes' marks", () => {
       let guides = 0
       for (const { note, laid, at } of drawn(panel, plan)) {
         const marks = note.marks.filter((mark) => mark.kind === "guide")
-        const shown = lines(laid.fine, laid.box)
+        const shown = lines(path(laid, "fine"), laid.box)
         expect(shown.length).toBeLessThanOrEqual(marks.length)
         guides += shown.length
         for (const { a, b } of shown) {
@@ -291,7 +348,7 @@ describe("the notes' marks", () => {
       const far = (point: Point) =>
         Math.hypot(point[0] - tip[0], point[1] - tip[1])
 
-      const sweeps = [...laid.construction.matchAll(SWEEP)]
+      const sweeps = [...path(laid, "line").matchAll(SWEEP)]
       expect(sweeps.length).toBe(1)
       const [x0, y0, r, , x1, y1] = sweeps[0]!.slice(1).map(Number) as [
         number,
@@ -312,7 +369,7 @@ describe("the notes' marks", () => {
 
       // The table's line: level, on a device pixel, from its far end to past
       // the tip.
-      const table = lines(laid.construction, laid.box).filter(
+      const table = lines(path(laid, "line"), laid.box).filter(
         ({ a, b }) => a[1] === b[1] && b[0] - a[0] > 2 * ARM + 1,
       )
       expect(table.length).toBe(1)
@@ -353,7 +410,7 @@ describe("the notes' marks", () => {
       const b = at(mark.to)
       const far = (p: Point, q: Point) => Math.hypot(q[0] - p[0], q[1] - p[1])
       const out = mark.offset * g.scale
-      const shown = lines(laid.construction, laid.box)
+      const shown = lines(path(laid, "line"), laid.box)
       expect(shown.length).toBe(5)
 
       // The line: as long as the rule, beside it, `offset` away.
@@ -424,7 +481,7 @@ describe("the notes' marks", () => {
       )
       // Its level arm: twice `ARM` long, which no outline's side and no
       // angle's line is.
-      const level = lines(laid.construction, laid.box).filter(
+      const level = lines(path(laid, "line"), laid.box).filter(
         ({ a, b }) => a[1] === b[1] && Math.abs(b[0] - a[0] - 2 * ARM) < 1e-6,
       )
       expect(level.length).toBeLessThanOrEqual(points.length)
@@ -498,6 +555,6 @@ describe("the notes' marks", () => {
     )
     expect(laid!.handles.length).toBe(1)
     // The side that never crosses the picture is not drawn.
-    expect(lines(laid!.construction, laid!.box).length).toBe(2)
+    expect(lines(path(laid!, "line"), laid!.box).length).toBe(2)
   })
 })
