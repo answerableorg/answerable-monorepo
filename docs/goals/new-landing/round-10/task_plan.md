@@ -26,7 +26,7 @@ Value 5, the outline beside its plaque and its envelope):
 | 4   | Design (`design.md`)                                                               | complete                                                                                                                          |
 | 5   | Build: rest band for the whole frame, marks off the scroll, marks drawn on arrival | complete                                                                                                                          |
 | 6   | Verify in Chromium, WebKit and Firefox 138; gates                                  | complete (F10)                                                                                                                    |
-| 7   | The owner's look on a phone with Firefox 159, then the green light                 | pending                                                                                                                           |
+| 7   | The owner's look on a phone with Firefox 159, then the green light                 | landed on main at the owner's word ("push to prod"); their phone is the check                                                     |
 
 ## Questions to answer before any code
 
