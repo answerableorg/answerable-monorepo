@@ -154,3 +154,4 @@
 - Owner, on seeing it: "can we have on the ruler some measurements as well?" A new `dimension` mark draws the scale rule's length above it: a line beside the rule, a witness line and a stroke at each end, and "300 mm" along it (a scale rule's usual length; the figure is written in the script, not measured).
 - Looked at in Playwright Chromium and WebKit at 1440 by 900 and 393 by 852, every scene, on the development server. Frame times not measured again: no element was added to what the scroll moves.
 - Gates: typecheck, lint, web tests, build, knip. Not landed: on `claude/new-landing-r9`, waiting on the owner.
+- Owner approved on 2026-11-11 ("Land on main"). Round 9 landed on main (`5537f552`, `95f00cbc`, `f80ff2c0`), after typecheck, lint, the web tests (313 pass), the full build and knip on that tree.
