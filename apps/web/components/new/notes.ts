@@ -45,6 +45,19 @@ type Mark =
       r: number
       past: number
     }
+  /**
+   * A dimension between two points: a line beside them, `offset` to the left
+   * of the way from `from` to `to`, a witness line to it from `clear` of each
+   * point, a stroke across each end, and its size in figures over its middle.
+   */
+  | {
+      kind: "dimension"
+      from: Point
+      to: Point
+      offset: number
+      clear: number
+      text: string
+    }
 
 /** The marks on the scenes that share one view of a painting. */
 export type Note = { scenes: readonly number[]; marks: readonly Mark[] }
@@ -71,8 +84,9 @@ export type NotePlan = {
   labels: readonly Label[]
 }
 
-/** A figure and the point it is centred on. */
-type Label = { x: number; y: number; text: string }
+/** Figures, the point they are centred on, and how far round they are turned,
+    in degrees. */
+type Label = { x: number; y: number; text: string; turn: number }
 
 /** An outline's handle and a cross's arm, in pixels. */
 const HANDLE = 7
@@ -82,6 +96,11 @@ export const ARM = 7.5
 export const FIGURE_FONT = 11
 export const FIGURE_GAP = 13
 const FIGURE_ROOM = 12
+/** A dimension's witness lines run this far past it, the stroke across each
+    end is twice this long, and its figures' middle is this far beyond it. */
+const WITNESS_PAST = 5
+export const DIMENSION_STROKE = 5
+export const DIMENSION_GAP = 9
 
 /**
  * How thick a note's lines are, in pixels: about one and a half, a whole
@@ -290,7 +309,40 @@ export function notePlans(
         const [x, y] = onArc({ ...arc, r: arc.r + FIGURE_GAP }, from + turn / 2)
         if (inside([x, y], FIGURE_ROOM)) {
           const degrees = Math.round((Math.abs(turn) * 180) / Math.PI)
-          drawing.labels.push({ x, y, text: `${degrees}°` })
+          drawing.labels.push({ x, y, text: `${degrees}°`, turn: 0 })
+        }
+      } else if (mark.kind === "dimension") {
+        const a = at(mark.from)
+        const b = at(mark.to)
+        const length = Math.hypot(b[0] - a[0], b[1] - a[1])
+        // Along the way from one point to the other, and to its left.
+        const u: Point = [(b[0] - a[0]) / length, (b[1] - a[1]) / length]
+        const v: Point = [u[1], -u[0]]
+        const from = ([x, y]: Point, along: number, out: number): Point => [
+          x + u[0] * along + v[0] * out,
+          y + u[1] * along + v[1] * out,
+        ]
+        const side = Math.sign(mark.offset)
+        const out = mark.offset * g.scale
+        drawing.construction.push({ a: from(a, 0, out), b: from(b, 0, out) })
+        const half = DIMENSION_STROKE / Math.SQRT2
+        for (const end of [a, b]) {
+          drawing.construction.push(
+            {
+              a: from(end, 0, side * mark.clear * g.scale),
+              b: from(end, 0, out + side * WITNESS_PAST),
+            },
+            { a: from(end, -half, out - half), b: from(end, half, out + half) },
+          )
+        }
+        const [x, y] = from(a, length / 2, out + side * DIMENSION_GAP)
+        const room = Math.max(FIGURE_ROOM, mark.text.length * 3.5)
+        if (inside([x, y], room)) {
+          // Read along the line, the right way up.
+          let turn = (Math.atan2(u[1], u[0]) * 180) / Math.PI
+          if (turn > 90) turn -= 180
+          if (turn <= -90) turn += 180
+          drawing.labels.push({ x, y, text: mark.text, turn })
         }
       } else {
         const [x, y] = at(mark.at)
@@ -370,7 +422,9 @@ function cut(
     box.add(rect.x, rect.y, 1)
     box.add(rect.x + rect.w, rect.y + rect.h, 1)
   }
-  for (const label of drawing.labels) box.add(label.x, label.y, FIGURE_ROOM)
+  for (const label of drawing.labels) {
+    box.add(label.x, label.y, Math.max(FIGURE_ROOM, label.text.length * 3.5))
+  }
   const loose = box.rect()
   if (!loose) return null
   // The box's corner is on a device pixel, as its lines are.

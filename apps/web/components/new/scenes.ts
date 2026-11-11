@@ -362,6 +362,15 @@ export const NOTES: readonly Note[] = [
     scenes: [VALUES_FROM + 2],
     marks: [
       { kind: "axis", from: [1450, 1496.5], to: [1920, 1451], extend: 60 },
+      // The rule's length, from end to end: a scale rule is 300 mm.
+      {
+        kind: "dimension",
+        from: [1450, 1496.5],
+        to: [1920, 1451],
+        offset: 62,
+        clear: 20,
+        text: "300 mm",
+      },
     ],
   },
   {

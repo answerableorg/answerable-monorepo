@@ -456,7 +456,13 @@ function NoteDrawing({
           textAnchor="middle"
         >
           {note.labels.map((label) => (
-            <text key={label.text} x={label.x} y={label.y} dy="0.36em">
+            <text
+              key={label.text}
+              x={label.x}
+              y={label.y}
+              dy="0.36em"
+              transform={`rotate(${label.turn.toFixed(2)} ${label.x} ${label.y})`}
+            >
               {label.text}
             </text>
           ))}

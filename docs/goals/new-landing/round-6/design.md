@@ -63,12 +63,14 @@ picture:
 | `ring` | A circle |
 | `cross` | A cross on a point |
 | `angle` | The angle at a point between two lines: the line it is measured from, an arc, and its size in degrees |
+| `dimension` | A length between two points: a line beside them, a witness line and a stroke at each end, and its size along it |
 
 There are no pointing lines and no labels: the owner removed them on
 2026-11-09 ("remove the pointing lines"), and kept the marks on the
-paintings ("keep the lines around the badge, those look nice"). The one
-figure is the pen's angle to the table (owner, 2026-11-11: "a visible
-angle that appears").
+paintings ("keep the lines around the badge, those look nice"). The only
+figures are measurements: the pen's angle to the table and the scale
+rule's length (owner, 2026-11-11: "a visible angle that appears", "on the
+ruler some measurements as well").
 
 The marks are meant to be seen (owner, 2026-11-11: "a bit too small /
 discreet"): about 1.5 px thick, a whole number of device pixels, in solid
@@ -81,7 +83,7 @@ corners and 15 px crosses. Only a `guide` stays a hairline.
 | Programme | The badge's outline with a square on each corner, its lettering's baseline and capitals' line, the sun's circle |
 | Value 1 | The pen's axis, a cross on its tip, the table's line under it and the angle between them (56°) |
 | Value 2 | The name plate's outline |
-| Value 3 | The scale rule's axis |
+| Value 3 | The scale rule's axis, and its length as a dimension above it (300 mm) |
 | Value 4 | The pointing arm's axis, a cross on the hand |
 | Value 5 | The envelope's outline, a circle on the seal |
 | Value 6 | The print's outline, the dome's axis |

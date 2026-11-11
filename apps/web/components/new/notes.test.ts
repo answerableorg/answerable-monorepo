@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import {
   ARM,
+  DIMENSION_GAP,
+  DIMENSION_STROKE,
   FIGURE_GAP,
   noteLine,
   notePlans,
@@ -333,6 +335,83 @@ describe("the notes' marks", () => {
           Math.abs(figures[1] - tip[1]) - off(figures, tip, at(mark.to)),
         ),
       ).toBeLessThan(0.02)
+    },
+  )
+
+  test.each(each)(
+    "%s: the rule's dimension is a line beside it, a witness line and a stroke at each end, and its size along it",
+    (_, panel, plan) => {
+      const dimensions = drawn(panel, plan).flatMap(({ note, laid, g, at }) =>
+        note.marks.flatMap((mark) =>
+          mark.kind === "dimension" ? [{ mark, laid, g, at }] : [],
+        ),
+      )
+      // One, on the third value, on every panel.
+      expect(dimensions.length).toBe(1)
+      const { mark, laid, g, at } = dimensions[0]!
+      const a = at(mark.from)
+      const b = at(mark.to)
+      const far = (p: Point, q: Point) => Math.hypot(q[0] - p[0], q[1] - p[1])
+      const out = mark.offset * g.scale
+      const shown = lines(laid.construction, laid.box)
+      expect(shown.length).toBe(5)
+
+      // The line: as long as the rule, beside it, `offset` away.
+      const beside = shown.filter(
+        (line) => Math.abs(far(line.a, line.b) - far(a, b)) < 0.05,
+      )
+      expect(beside.length).toBe(1)
+      for (const end of [beside[0]!.a, beside[0]!.b]) {
+        expect(Math.abs(off(end, a, b) - out)).toBeLessThan(0.02)
+      }
+      // Above the rule, where the painting has room for it.
+      expect(beside[0]!.a[1]).toBeLessThan(a[1])
+
+      // A witness line from clear of each end of the rule to past the line,
+      // square to the rule.
+      const witnesses = shown.filter(
+        (line) =>
+          Math.abs(far(line.a, line.b) - (out - mark.clear * g.scale + 5)) <
+          0.05,
+      )
+      expect(witnesses.length).toBe(2)
+      for (const [index, end] of [a, b].entries()) {
+        const witness = witnesses[index]!
+        expect(off(end, witness.a, witness.b)).toBeLessThan(0.02)
+        expect(
+          Math.abs(off(witness.a, a, b) - mark.clear * g.scale),
+        ).toBeLessThan(0.02)
+        expect(
+          Math.abs(
+            (witness.b[0] - witness.a[0]) * (b[0] - a[0]) +
+              (witness.b[1] - witness.a[1]) * (b[1] - a[1]),
+          ),
+        ).toBeLessThan(0.05 * far(a, b))
+      }
+
+      // A stroke across each end of the line.
+      const strokes = shown.filter(
+        (line) => Math.abs(far(line.a, line.b) - 2 * DIMENSION_STROKE) < 0.05,
+      )
+      expect(strokes.length).toBe(2)
+      for (const [index, end] of [beside[0]!.a, beside[0]!.b].entries()) {
+        const { a: p, b: q } = strokes[index]!
+        expect(far(end, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2])).toBeLessThan(
+          0.02,
+        )
+      }
+
+      // Its size, over the middle of the line, read along it.
+      expect(laid.labels.map((label) => label.text)).toEqual(["300 mm"])
+      const label = laid.labels[0]!
+      const figures: Point = [laid.box.x + label.x, laid.box.y + label.y]
+      expect(Math.abs(off(figures, a, b) - out - DIMENSION_GAP)).toBeLessThan(
+        0.02,
+      )
+      expect(Math.abs(far(figures, a) - far(figures, b))).toBeLessThan(0.02)
+      const slope = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI
+      expect(label.turn).toBeCloseTo(slope, 6)
+      expect(Math.abs(label.turn)).toBeLessThan(90)
     },
   )
 
