@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, customFetch, jwtVerify } from "jose"
+import { createRemoteJWKSet, customFetch, decodeProtectedHeader, jwtVerify } from "jose"
 import { z } from "zod"
 
 /** The issuer and resource a verifier trusts, the kind of token it accepts and the HTTP client it uses for discovery. */
@@ -115,7 +115,8 @@ function trustedUrl(value: string, name: string) {
 
 /**
  * Create a function that verifies an Answerable ID access token against the issuer's published keys, offline, and returns its caller.
- * The keys are read from the issuer's metadata on first use; every failure throws `AuthenticationError`.
+ * The keys are read from the issuer's metadata on first use, and a failed read is not tried again for five seconds; a bearer that is not a JWT
+ * never causes one. Every failure throws `AuthenticationError`.
  * It accepts a person's token, or with `subjectType: "client"` a machine client's instead.
  *
  * @example
@@ -143,10 +144,16 @@ export function createIdVerifier<Kind extends "user" | "client" = "user">(config
     if (jwksUrl.origin !== issuerUrl.origin) throw new Error("jwks_uri must share the issuer origin")
     return createRemoteJWKSet(jwksUrl, { [customFetch]: fetcher })
   }
+  // When discovery last failed: it is not tried again for five seconds, so that requests while ID is down do not each call it.
+  let failedAt = Number.NEGATIVE_INFINITY
   return async token => {
     try {
+      // A bearer whose header does not decode is refused before discovery, which it would otherwise cost.
+      decodeProtectedHeader(token)
+      if (!discovery && Date.now() - failedAt < 5_000) throw new AuthenticationError()
       discovery ??= discover().catch(error => {
         discovery = undefined
+        failedAt = Date.now()
         throw error
       })
       const { payload } = await jwtVerify(token, await discovery, {

@@ -197,13 +197,42 @@ test("cached keys survive an outage, but unseen keys fail", async () => {
   const clock = spyOn(Date, "now").mockReturnValue(now + 31_000)
   try { await expect(issuer.verify(unknown)).rejects.toBeInstanceOf(AuthenticationError) } finally { clock.mockRestore() }
 })
-test("failed discovery is retried", async () => {
+test("failed discovery is retried five seconds later, not before", async () => {
   const issuer = await fixture()
   const token = await issuer.sign({ resource })
-  issuer.outage(true)
-  await expect(issuer.verify(token)).rejects.toBeInstanceOf(AuthenticationError)
-  issuer.outage(false)
-  await issuer.verify(token)
+  const now = Date.now()
+  const clock = spyOn(Date, "now").mockReturnValue(now)
+  try {
+    issuer.outage(true)
+    await expect(issuer.verify(token)).rejects.toBeInstanceOf(AuthenticationError)
+    issuer.outage(false)
+    clock.mockReturnValue(now + 4_999)
+    await expect(issuer.verify(token)).rejects.toBeInstanceOf(AuthenticationError)
+    clock.mockReturnValue(now + 5_000)
+    await issuer.verify(token)
+  } finally {
+    clock.mockRestore()
+  }
+})
+test("while ID is down, a bearer that is not a JWT never calls it, and tokens call it at most once every five seconds", async () => {
+  let discoveries = 0
+  const verify = createIdVerifier({ issuer: "https://id.test", resource, fetch: async () => (discoveries++, new Response("unavailable", { status: 503 })) })
+  for (let i = 0; i < 50; i++) await expect(verify(`garbage-${i}`)).rejects.toBeInstanceOf(AuthenticationError)
+  expect(discoveries).toBe(0)
+  const signer = await fixture()
+  const token = await signer.sign({ resource })
+  const now = Date.now()
+  const clock = spyOn(Date, "now").mockReturnValue(now)
+  try {
+    await Promise.all(Array.from({ length: 25 }, () => expect(verify(token)).rejects.toBeInstanceOf(AuthenticationError)))
+    for (let i = 0; i < 25; i++) await expect(verify(token)).rejects.toBeInstanceOf(AuthenticationError)
+    expect(discoveries).toBe(1)
+    clock.mockReturnValue(now + 5_000)
+    for (let i = 0; i < 50; i++) await expect(verify(token)).rejects.toBeInstanceOf(AuthenticationError)
+    expect(discoveries).toBe(2)
+  } finally {
+    clock.mockRestore()
+  }
 })
 for (const mismatch of ["issuer", "origin"]) {
   test(`discovery rejects a different ${mismatch}`, async () => {

@@ -16,7 +16,8 @@ function createIdVerifier<Kind extends "user" | "client" = "user">(config: IdVer
 ```
 
 Create a function that verifies an Answerable ID access token against the issuer's published keys, offline, and returns its caller.
-The keys are read from the issuer's metadata on first use; every failure throws `AuthenticationError`.
+The keys are read from the issuer's metadata on first use, and a failed read is not tried again for five seconds; a bearer that is not a JWT
+never causes one. Every failure throws `AuthenticationError`.
 It accepts a person's token, or with `subjectType: "client"` a machine client's instead.
 
 **Example**
