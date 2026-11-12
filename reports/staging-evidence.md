@@ -55,4 +55,4 @@ It ran in the same deploy (`toolbox-id-client` and `admin-id-client` did not exi
 
 ## Still open
 
-Traefik's seen address (read `X-Forwarded-For` at ID once a request can be traced), and Bun's identity check for an IP host under `verify-full` (above).
+Traefik's seen address (read `X-Forwarded-For` at ID once a request can be traced). Bun's identity check for an IP host was answered by the pre-production audit of 12 November 2026: on Bun 1.3.1 there is none, so `verify-full` checks the chain alone ([`Q-DB-TLS-IDENTITY`](../docs/02-plan.md#open-register)).
