@@ -97,9 +97,25 @@ ID mails sign-in links and codes through Postmark, from `Answerable ID <sign-in@
    | --- | --- | --- | --- |
    | TXT | The DKIM host Postmark shows, `<selector>._domainkey.id.<zone>` | The DKIM value Postmark shows, which starts `k=rsa;` | DNS only |
    | CNAME | The Return-Path host Postmark shows, one label under `id.<zone>`, such as `pm-bounces.id.<zone>` | `pm.mtasv.net` | **DNS only**: a proxied one does not verify |
-   | TXT | `_dmarc.id.<zone>` | `v=DMARC1; p=none; rua=mailto:<an address that reads the reports>` | DNS only |
+   | TXT | `_dmarc.id.<zone>` | Production: `v=DMARC1; p=reject; rua=mailto:info@answerable.org`. Staging: `v=DMARC1; p=reject` | DNS only |
 
-   A report address outside the sender's own domain needs that domain's authorisation ([RFC 7489, section 7.1](https://www.rfc-editor.org/rfc/rfc7489#section-7.1)), so staging can stop at `v=DMARC1; p=none`. There is no SPF record on the sender domain: Postmark asks for none, and the apex's Microsoft 365 records are not part of this. Every name here sits under `id.<zone>`, never at the apex.
+   **`p=reject` from the first day**, in both environments. Postmark is the only sender of `id.<zone>`, and with the DKIM record verified it signs as `id.<zone>`, so its mail aligns from the first message, and a receiver rejects anything else that claims to be ID's sign-in mail. A softer policy would let anyone send a sign-in link as ID while it lasts. So send no mail before step 4 shows DKIM verified: until then Postmark signs with its own domain, which does not align, and receivers reject it. Staging has no report address: one outside the sender's own organisational domain needs that domain's authorisation ([RFC 7489, section 7.1](https://www.rfc-editor.org/rfc/rfc7489#section-7.1)). There is no SPF record on the sender domain: Postmark asks for none, and the apex's Microsoft 365 records are not part of this. Every name here sits under `id.<zone>`, never at the apex.
+
+   **Check it** before the environment's first mail, and record the answer with the date:
+
+   ```sh
+   dig +short TXT _dmarc.id.answerable.org          # "v=DMARC1; p=reject; rua=mailto:info@answerable.org"
+   dig +short TXT _dmarc.id.answerable-staging.uk   # "v=DMARC1; p=reject"
+   ```
+
+   **CAA, once per zone.** A CAA record at the zone's apex names the certificate authorities that may issue for the zone's names, so no other authority issues a certificate for `id.<zone>`. List every authority that issues for the zone: the ones Cloudflare's Universal SSL uses for the proxied names (Cloudflare adds its own records for them once the zone has any CAA record: check that they appear under DNS > Records), and, in `answerable.org`, the one Vercel uses for `www` (`letsencrypt.org`). The Origin CA certificate Terraform requests is not a public authority's and needs no record. Then check:
+
+   ```sh
+   dig +short CAA answerable.org
+   dig +short CAA answerable-staging.uk
+   ```
+
+   Every authority listed is one of those, and Cloudflare's dashboard still shows the zone's edge certificate active. A missing authority shows at the next renewal, as a certificate that does not renew: add it then.
 4. **Verify in Postmark.** Once the records are live, verify DKIM and the Return-Path on each domain in Postmark.
 5. **The token.** Paste each server's token into its environment yourself, never in chat; `gh` asks for the value:
 
@@ -114,7 +130,7 @@ ID mails sign-in links and codes through Postmark, from `Answerable ID <sign-in@
    - **Bounces and complaints.** Keep a server's bounce rate under 10% and its spam complaints under 0.1%: past them Postmark pauses the server, and every sign-in by email in that environment stops. Made-up addresses bounce, which is why ID admits an address no user holds only in a firm's `domain` mode, and then under a budget of its own ([`apps/id/OPERATIONS.md`](../apps/id/OPERATIONS.md)).
    - **406.** Postmark answers 406 for an address it suppressed (a hard bounce, a spam complaint or a manual suppression). ID logs `magic_link_send_failed` with `errorCode` 406, and the row in `magic_link_requests` names the address for seven days. Staff reactivate the address in that server's suppression list in Postmark; ID has nothing to change.
    - **DKIM.** Rotate each domain's DKIM key every six months: take the new host and value from Postmark's DNS Settings, change the TXT record in Cloudflare, and verify again as in step 4.
-   - **DMARC.** Once two clean weeks of reports show only Postmark, change the TXT record to `p=quarantine`, and after two more to `p=reject`.
+   - **DMARC.** The policy stays `p=reject`. Production's reports go to `info@answerable.org`: a source other than Postmark in them is mail someone sent as ID, which receivers rejected.
    - **Replies.** `info@answerable.org` is the Reply-To of every mail, so someone must read it.
 
 The fake Postmark that the kind stack and the acceptance run is `startFakePostmark` in `packages/acceptance`; the real one is checked by hand on staging, with a real mailbox, before anyone relies on it ([the plan](../docs/goals/magic-links/task_plan.md), W10).
