@@ -26,10 +26,15 @@ infra/**
 **/coverage
 **/*.test.ts
 **/*.test.tsx
+# Test support, which no entry point imports: helpers, fake services, fixtures and benches.
+**/testing.ts
+**/test-mcp.ts
+**/src/test
+**/testing
+**/bench
 **/__tests__
 **/*.md
 **/*.mdx
 docs
 reports
 charts
-infra/ops/src/testing.ts

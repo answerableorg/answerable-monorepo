@@ -24,7 +24,7 @@ LABEL org.opencontainers.image.title="Answerable MCPs" \
       org.opencontainers.image.revision="${REVISION}"
 WORKDIR /app
 COPY --from=dependencies /app ./
-# Every package, so that an MCP may use any of them; .dockerignore leaves out their tests, Markdown, coverage and the acceptance kit.
+# Every package, so that an MCP may use any of them; .dockerignore leaves out their tests and test support, Markdown, coverage and the acceptance kit.
 COPY packages packages
 COPY mcps mcps
 # Bun's transpiler cache would write under the home directory; the root filesystem is read-only. Each server listens on every address of its
