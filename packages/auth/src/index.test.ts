@@ -44,6 +44,8 @@ const invalidClaims: [string, Record<string, unknown>][] = [
   ["negative upstream authentication time", { upstream_auth_time: -1 }],
   ["fractional upstream authentication time", { upstream_auth_time: 1.5 }],
   ["unknown authentication method", { authentication_method: "password" }],
+  ["missing authentication method", { authentication_method: undefined }], ["null authentication method", { authentication_method: null }],
+  ["missing groups", { groups: undefined }],
 ]
 for (const [name, claims] of invalidClaims) {
   test(`rejects ${name} with a safe authentication error`, async () => {
@@ -107,8 +109,6 @@ test("the upstream authentication time is the token's, null when the directory r
   const method = async (claims: Record<string, unknown>) => (await issuer.verify(await issuer.sign({ resource, claims }))).authenticationMethod
   expect(await method({ authentication_method: "magic_link" })).toBe("magic_link")
   expect(await method({ authentication_method: "directory" })).toBe("directory")
-  expect(await method({ authentication_method: null })).toBeNull()
-  expect(await method({ authentication_method: undefined })).toBeNull()
   const now = Math.floor(Date.now() / 1000)
   expect(await time({})).toBeWithin(now - 5, now + 1)
 })
@@ -119,10 +119,6 @@ test("the verifier returns groups from a user token", async () => {
   const principal = await issuer.verify(await issuer.sign({ resource, organizationId, groups }))
   expect(principal.groups).toEqual([organizationId, ...groups])
   expect(Object.isFrozen(principal.groups)).toBe(true)
-})
-test("the verifier gives an empty list for a token without groups, from an older ID", async () => {
-  const issuer = await fixture()
-  expect((await issuer.verify(await issuer.sign({ resource, claims: { groups: undefined } }))).groups).toEqual([])
 })
 test("the verifier refuses a token whose groups are not a list of UUIDs", async () => {
   const issuer = await fixture()

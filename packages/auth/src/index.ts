@@ -45,13 +45,14 @@ export type UserPrincipal = Readonly<{
   /**
    * How the person proved who they are when this authorisation was made: `directory`, a sign-in at their organisation's directory, with its MFA and
    * conditional access, or `magic_link`, a link or code from an email, which shows only that they could read that mailbox. It is the token's
-   * `authentication_method`, kept across refreshes. A token without the claim, from an ID older than this field, gives `null`, so no absence reads as a directory sign-in.
+   * `authentication_method`, kept across refreshes. ID puts it in every person's token; a token without it is refused, so no absence reads as a
+   * directory sign-in.
    */
-  authenticationMethod: "directory" | "magic_link" | null
+  authenticationMethod: "directory" | "magic_link"
   /**
    * The person's groups in `organizationId` when the token was issued: the token's `groups`. The value equal to `organizationId` is
    * "everyone in the organisation"; match it by value, not by its place in the list. The others are the ids of the ID groups the person
-   * is in. A refresh reads them again. A token without the claim, from an ID older than this field, gives an empty list.
+   * is in. A refresh reads them again. ID puts it in every person's token; a token without it is refused.
    */
   groups: readonly string[]
 }>
@@ -94,7 +95,7 @@ const shared = z.object({
   cnf: z.never().optional(),
 })
 const claimsOf = {
-  user: shared.extend({ subject_type: z.literal("user"), sub: z.uuid(), membership_id: z.uuid(), grant_id: z.uuid(), upstream_auth_time: z.number().int().nonnegative().nullish(), authentication_method: z.enum(["directory", "magic_link"]).nullish(), groups: z.array(z.uuid()).optional() }),
+  user: shared.extend({ subject_type: z.literal("user"), sub: z.uuid(), membership_id: z.uuid(), grant_id: z.uuid(), upstream_auth_time: z.number().int().nonnegative().nullish(), authentication_method: z.enum(["directory", "magic_link"]), groups: z.array(z.uuid()) }),
   // A machine client is its own subject.
   client: shared.extend({ subject_type: z.literal("client"), sub: z.string().min(1), authorization_version: version }).refine(claims => claims.sub === claims.client_id),
 }
@@ -162,7 +163,7 @@ export function createIdVerifier<Kind extends "user" | "client" = "user">(config
         organizationAuthorizationVersion: claims.organization_authorization_version,
       }
       return Object.freeze(claims.subject_type === "user"
-        ? { userId: claims.sub, membershipId: claims.membership_id, grantId: claims.grant_id, ...common, upstreamAuthTime: claims.upstream_auth_time ?? null, authenticationMethod: claims.authentication_method ?? null, groups: Object.freeze([...(claims.groups ?? [])]) }
+        ? { userId: claims.sub, membershipId: claims.membership_id, grantId: claims.grant_id, ...common, upstreamAuthTime: claims.upstream_auth_time ?? null, authenticationMethod: claims.authentication_method, groups: Object.freeze([...claims.groups]) }
         : { authorizationVersion: claims.authorization_version, ...common }) as Kind extends "client" ? MachinePrincipal : UserPrincipal
     } catch {
       throw new AuthenticationError()
