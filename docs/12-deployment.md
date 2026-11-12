@@ -64,7 +64,7 @@ flowchart TB
   toolbox -.->|"ID's issuer, through Cloudflare"| cf
   admin -.->|"ID and the Toolbox, through Cloudflare"| cf
   gha -->|"terraform apply"| civo
-  gha -->|"build, sign, push"| ghcr
+  gha -->|"build, push, sign after the smoke test"| ghcr
   gha -->|"helm upgrade with the deployer token"| api
   api --> jobs
   cluster -.->|"pull by digest"| ghcr
@@ -170,7 +170,7 @@ Public, in the cluster: the ConfigMap `postgres-ca` (the bootstrap Job).
 ## Images and deploys
 
 - **Registry: GHCR**, private ([D24](goals/civo-deploy/decisions.md)). Tag `sha-<40-character commit SHA>`, never a mutable name. The deploy reads every image with `GHCR_PULL_TOKEN` before it touches the cluster, then writes the token into the Secret `ghcr-pull`, which every pod pulls with.
-- **Built once per commit** on a staging tag, for `linux/amd64`, with provenance and an SBOM, and **signed with cosign**, keyless, by `deploy-staging.yml`.
+- **Built once per commit** on a staging tag, for `linux/amd64`, with provenance and an SBOM, and **signed with cosign**, keyless, by `deploy-staging.yml` once staging has run them and passed its smoke test.
 - **Deployed by digest.** The deploy resolves each tag to its digest and the chart runs `<repository>@sha256:…`, so a moved tag changes nothing.
 
 **A tag `staging/<name>`** on a commit of `main` ([`deploy-staging.yml`](../.github/workflows/deploy-staging.yml), [D32](goals/civo-deploy/decisions.md)):
@@ -178,9 +178,10 @@ Public, in the cluster: the ConfigMap `postgres-ca` (the bootstrap Job).
 1. The tag names a commit of `main`, or the run stops.
 2. CI (`ci.yml`): typecheck, lint, build, every test suite, `infra:check` and `infra:test`.
 3. `terraform apply` of `infra/civo` for staging, a no-op when nothing changed; it also keeps the deploy credentials in the environment current.
-4. Build and sign the images of `infra/pipeline/images.json`.
+4. Build the images of `infra/pipeline/images.json`, unsigned.
 5. Deploy: apply `id-env` from the environment, then `helm upgrade --install` with `--rollback-on-failure`. The hooks run in order: ops RBAC; `ops-bootstrap` (every deploy; it records the database's certificate on the first run, makes every database, login and Secret, and each MCP's schema or own database, from `charts/answerable/mcps.json`, and changes nothing when nothing is missing); `id-migrate`, `toolbox-migrate` (the Toolbox's database, then every MCP), then `admin-migrate`, one at a time; then the release: the Toolbox rolls with every new provider mounted and every new path; `--wait`; then `ops-register`, on every deploy.
 6. Smoke test through Cloudflare, generated from `charts/answerable/mcps.json`: ID's health, readiness, discovery and keys; the Toolbox's health, which lists every MCP it serves; the admin MCP's health; the metadata of the Toolbox, the admin MCP and each standalone MCP; retried for five minutes.
+7. Sign each image with cosign, keyless, on the digest the deploy ran. A run that failed at any step before signs nothing.
 
 An MCP ships with its commit: nothing outside its folder changes, the image holds it, and the chart's list, which `bun mcp` writes, provisions, migrates, mounts and routes it, and `ops-register` registers it in ID.
 
@@ -191,7 +192,7 @@ An MCP ships with its commit: nothing outside its folder changes, the image hold
 - **A failure rolls the release back**, as a migration's does: a release is its images and what they need in place, ID's rows included, and ID rolls in the same release.
 - **Access** stays a staff decision: `standalone_enable` in the admin MCP gives an organisation the sign-in, then `access_grant` with the host client as `clientId`, or `everyone: true`, the MCP's scopes.
 
-**A tag `production/<name>`** ([`promote-production.yml`](../.github/workflows/promote-production.yml), [D8](goals/civo-deploy/decisions.md)): the commit must be on `main` and each of its images must carry `deploy-staging.yml`'s signature from a staging tag, so staging always comes first; the run applies `infra/civo` for production, deploys exactly the verified digests, smoke-tests. Production is never rebuilt. Nothing waits for a person: Not yet ([`Q-PRODUCTION-APPROVAL`](02-plan.md#open-register)).
+**A tag `production/<name>`** ([`promote-production.yml`](../.github/workflows/promote-production.yml), [D8](goals/civo-deploy/decisions.md)): the commit must be on `main` and each of its images must carry the signature `deploy-staging.yml` makes on a staging tag of the same commit after staging's smoke test passed, so staging always runs it first; the run applies `infra/civo` for production, deploys exactly the verified digests, smoke-tests. Production is never rebuilt. Nothing waits for a person: Not yet ([`Q-PRODUCTION-APPROVAL`](02-plan.md#open-register)).
 
 - **Roll back** by tagging an earlier commit, or `helm rollback` with a kubeconfig.
 - **Migrations are expand, then contract** ([D10](goals/civo-deploy/decisions.md)): a migration never breaks the image before it, because that image keeps serving during the rollout and after a rollback. A change that cannot be written that way needs a restore, not a rollback.

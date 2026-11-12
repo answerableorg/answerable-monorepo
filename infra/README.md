@@ -45,7 +45,7 @@ gh workflow run bootstrap.yml --ref main -f environment=staging
 gh run watch
 ```
 
-**4. The first tag.** A tag `staging/<name>` on a commit of `main` ships it ([how a deploy runs](pipeline/README.md#how-a-deploy-runs)): CI, the staging infrastructure (the first apply creates the cluster, the database and the certificates, and writes the deploy credentials into the environment), the images built and signed, the deploy, the smoke test.
+**4. The first tag.** A tag `staging/<name>` on a commit of `main` ships it ([how a deploy runs](pipeline/README.md#how-a-deploy-runs)): CI, the staging infrastructure (the first apply creates the cluster, the database and the certificates, and writes the deploy credentials into the environment), the images built, the deploy, the smoke test, and then the images signed.
 
 ```sh
 git tag staging/first main
@@ -134,9 +134,10 @@ gh run watch
 | `The tag names a commit of main` | Refuses a tag on any other commit |
 | CI | The same checks as every push |
 | `Apply the staging infrastructure` | `terraform apply` of `infra/civo` for staging; a no-op unless Terraform, `charts/platform` or Cloudflare's published ranges changed |
-| `Build …` | One amd64 image per entry of `pipeline/images.json`, pushed as `sha-<commit>` and signed |
+| `Build …` | One amd64 image per entry of `pipeline/images.json`, pushed as `sha-<commit>`, unsigned |
 | `Deploy to staging` | The Secret `id-env` applied from the environment, `helm upgrade` by digest with every hook, `ops-register` among them; on failure the release rolls back and the migration and ops Jobs' logs are printed |
 | `Smoke test staging` | A table of every check, in the run's summary: one line per standalone MCP, and the MCPs the Toolbox serves |
+| `Sign the images staging ran` | Each image signed with cosign, only once the smoke test passed: the signature `promote-production.yml` requires |
 
 - **A Terraform change** applies on the next staging tag. Read `terraform plan` locally first when the change is more than a size (`infra/civo/terraform.sh staging plan`, [day two](civo/README.md#day-two)).
 - **A migration** must be expand, then contract: the previous image keeps serving during the rollout and after a rollback ([`docs/12`](../docs/12-deployment.md#images-and-deploys)).
@@ -185,7 +186,7 @@ gh run watch
 
 **Not yet: an approval.** Required reviewers are not available to this repository: GitHub Team offers them on public repositories only. So a `production/*` tag ships as soon as its signatures verify, and anyone who can push tags can ship. Settle [`Q-PRODUCTION-APPROVAL`](../docs/02-plan.md#open-register) before production's first tag.
 
-The run verifies each image's signature (they must have been built by `deploy-staging.yml` on a staging tag), then applies production's Terraform, deploys exactly the verified digests and smoke-tests production. A commit staging never shipped is refused.
+The run verifies each image's signature: `deploy-staging.yml` must have signed it on a staging tag of this same commit, which it does only after staging's smoke test passed. Then it applies production's Terraform, deploys exactly the verified digests and smoke-tests production. A commit staging never shipped, or whose staging run failed, is refused. Images signed before 12 November 2026 were signed at build, before their staging deploy: promote a commit whose staging run has the job `Sign the images staging ran`.
 
 ## Roll back
 

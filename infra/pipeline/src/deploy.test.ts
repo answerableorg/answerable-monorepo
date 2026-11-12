@@ -222,6 +222,31 @@ describe("the images list, infra/pipeline/images.json", () => {
   })
 })
 
+describe("the signature production checks", () => {
+  type Job = { needs?: string | string[]; permissions?: Record<string, string>; steps?: { uses?: string; run?: string }[] }
+  const workflow = async (name: string) =>
+    (Bun.YAML.parse(await Bun.file(new URL(`../../../.github/workflows/${name}`, import.meta.url)).text()) as { jobs: Record<string, Job> }).jobs
+  const signing = (jobs: Record<string, Job>) =>
+    Object.entries(jobs).filter(([, job]) => (job.steps ?? []).some((step) => step.uses?.startsWith("sigstore/cosign-installer@") || /cosign sign\b/.test(step.run ?? "")))
+
+  test("is made by one job of the staging deploy, after the smoke test, with only the permissions signing needs", async () => {
+    const jobs = await workflow("deploy-staging.yml")
+    expect(signing(jobs).map(([name]) => name)).toEqual(["sign"])
+    expect(jobs.sign!.needs).toContain("smoke")
+    expect(jobs.smoke!.needs).toBe("deploy")
+    expect(jobs.sign!.permissions).toEqual({ packages: "write", "id-token": "write" })
+    expect(jobs.build!.permissions).toEqual({ contents: "read", packages: "write" })
+  })
+
+  test("is verified on this commit's staging run of deploy-staging.yml", async () => {
+    const jobs = await workflow("promote-production.yml")
+    const run = jobs.verify!.steps!.map((step) => step.run ?? "").join("\n")
+    expect(run).toContain('--certificate-github-workflow-sha "$GITHUB_SHA"')
+    expect(run).toContain("/.github/workflows/deploy-staging.yml@refs/tags/staging/")
+    expect(run).toContain("--certificate-oidc-issuer https://token.actions.githubusercontent.com")
+  })
+})
+
 describe("registryLogin", () => {
   test("holds the token as Docker and the kubelet read it, under the registry's host", () => {
     const { auths } = JSON.parse(registryLogin(ENV)) as { auths: Record<string, { username: string; password: string; auth: string }> }

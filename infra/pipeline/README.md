@@ -8,8 +8,8 @@ How a tag becomes a deployment, and how to run the pieces by hand. The workspace
 | --- | --- | --- |
 | `ci.yml` | A push to any branch; called by the two shipping workflows | The checks: validate, `infra:check`, and the kind stack on amd64, as Civo runs |
 | `bootstrap.yml` | By hand, once per environment (`environment`) | Creates the Terraform state bucket and its credential with the Civo CLI, and writes the state credential and ID's three random secrets into the GitHub environment, each only when missing. Prints nothing secret |
-| `deploy-staging.yml` | A tag `staging/<name>` on a commit of `main` | CI; Terraform's apply of staging, which also writes `KUBE_SERVER`, `KUBE_CA` and `KUBE_TOKEN` to the environment; the images of `images.json` built for amd64, pushed by digest, tagged `sha-<commit>` and signed; `deploy`; `smoke` |
-| `promote-production.yml` | A tag `production/<name>` on a commit of `main` | Verifies the signature of each image of `images.json` at `sha-<commit>`, which only a `staging/*` tag of that commit builds, so staging always comes first; Terraform's apply of production; `deploy` with the verified digests; `smoke` |
+| `deploy-staging.yml` | A tag `staging/<name>` on a commit of `main` | CI; Terraform's apply of staging, which also writes `KUBE_SERVER`, `KUBE_CA` and `KUBE_TOKEN` to the environment; the images of `images.json` built for amd64, pushed by digest and tagged `sha-<commit>`; `deploy`; `smoke`; then, only when the smoke test passed, each image signed |
+| `promote-production.yml` | A tag `production/<name>` on a commit of `main` | Verifies the signature of each image of `images.json` at `sha-<commit>`, which only a `staging/*` run of that same commit makes, after its smoke test passed, so staging always runs it first; Terraform's apply of production; `deploy` with the verified digests; `smoke` |
 | `ops.yml` | By hand (`environment`, `command`: `register` or `make-admin`, `email`) | `run-job`: one ops Job, once, with the chart of the commit the environment runs; then `smoke` at that commit. `make-admin` is the last step of an environment's first run |
 
 ## What each GitHub environment holds
@@ -39,7 +39,7 @@ The images are private, and hold the source. The build pushes and the promotion 
 ## How a deploy runs
 
 1. **Infrastructure.** Terraform applies the environment before anything is deployed (a no-op when nothing changed). It writes what the release expects in `answerable`: the Secrets `postgres-admin` and `origin-tls`, and the platform release.
-2. **Images.** Each image of `images.json` (`id`, `mcps`, `ops`) is built for amd64, which Civo's nodes run, pushed by digest, tagged `ghcr.io/answerableorg/answerable/<image>:sha-<commit>` and signed with cosign.
+2. **Images.** Each image of `images.json` (`id`, `mcps`, `ops`) is built for amd64, which Civo's nodes run, pushed by digest and tagged `ghcr.io/answerableorg/answerable/<image>:sha-<commit>`, unsigned. The job `sign` signs each with cosign, keyless, once the smoke test has passed; a run that fails before it leaves the images unsigned, and production refuses them.
 3. **Reading the images.** `deploy` reads each image with `GHCR_PULL_TOKEN` from a temporary Docker configuration, by tag or by the digest it was given, so a token that cannot read one stops the deploy before it touches the cluster.
 4. **`id-env` and `ghcr-pull`.** `deploy` writes `GHCR_PULL_TOKEN` into the Secret `ghcr-pull`, the login every pod pulls with; a changed token rolls nothing, since a node reads the Secret when it next pulls. It builds the Secret `id-env` from the variables above: the three required secrets (`BETTER_AUTH_SECRET`, `ROOT_ADMIN_SECRET` and `POSTMARK_SERVER_TOKEN`), each platform application's pair when both halves are set, and `BETTER_AUTH_SECRETS` when set. An empty required value or half a pair stops the deploy before it touches anything, naming the variables: ID refuses to start in production without the Postmark token, and the previous image, which ignores the variable, keeps serving during the rollout. Each Secret is applied on `kubectl`'s standard input and never logged; of kubectl's output only the lines that name an applied object are shown, and nothing when the apply fails, because an API error can quote a value. Its values go in as `data`, so a key left out later (a pair, or the ring) is removed.
 5. **Release.** With the digests it read (`docker buildx imagetools inspect`) or was given, `helm upgrade --install answerable charts/answerable --namespace answerable --rollback-on-failure --wait --wait-for-jobs --timeout 10m -f charts/answerable/values-civo-<environment>.yaml --set image.tag=<tag> --set images.<image>.digest=<digest> … --set-string idEnvChecksum=<sha256> --set ops.bootstrap=true --set ops.register=true`. The chart's hook Jobs run first: `ops-bootstrap`, which provisions every MCP of `charts/answerable/mcps.json`, then the migrations (`id-migrate`, `toolbox-migrate`, which also migrates every MCP, `admin-migrate`), each with the owner logins that the services never receive; after the pods are ready, `ops-register`. `--rollback-on-failure` rolls the release back when a Job fails, `ops-register` included, or the pods never become ready, and the script then prints the logs of every migration and ops Job.
@@ -91,6 +91,7 @@ Verify an image by hand, after `docker login ghcr.io` with a token that can read
 ```bash
 cosign verify ghcr.io/answerableorg/answerable/id@sha256:<64 hex> \
   --certificate-identity-regexp '^https://github.com/answerableorg/answerable-monorepo/.github/workflows/deploy-staging.yml@refs/tags/staging/' \
+  --certificate-github-workflow-sha <the commit's 40 hex> \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -106,7 +107,8 @@ cosign verify ghcr.io/answerableorg/answerable/id@sha256:<64 hex> \
 
 ## Known limits
 
-- **Digests are read from the registry.** `deploy-staging.yml` resolves them from the run that built them; `promote-production.yml` resolves them once, verifies them, and passes those.
+- **Digests are read from the registry.** `deploy-staging.yml`'s deploy and its `sign` job each resolve `sha-<commit>`, one run at a time (its concurrency group), so they read the same digests unless something else with `packages: write` moves the tag between them; `promote-production.yml` resolves them once, verifies that each carries a signature of this commit's staging run, and passes those.
+- **Images signed before 12 November 2026** were signed when they were built, whatever their staging run did afterwards. Promote a commit whose staging run has the job `Sign the images staging ran`.
 - **Last-applied annotation.** `kubectl apply` stores `id-env`'s data in the object's `last-applied-configuration` annotation. It is readable by whoever can read the Secret anyway.
 - **Signature verification** happens in `promote-production.yml`, not in the cluster. Enforcing it at admission is Not yet.
 

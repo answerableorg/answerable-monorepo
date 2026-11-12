@@ -2,8 +2,10 @@ name: Promote production
 
 # A tag production/<name> on a commit of main ships that commit to production, with the images staging built for it:
 # the signatures of every image of infra/pipeline/images.json are verified first, then the run applies the production
-# infrastructure, deploys exactly the verified digests and smoke-tests. Production is never rebuilt, and a commit staging
-# never shipped is refused. To roll back, tag an earlier commit that staging shipped. Nothing waits for a person: required
+# infrastructure, deploys exactly the verified digests and smoke-tests. Production is never rebuilt. deploy-staging.yml
+# signs an image only after staging ran it and passed the smoke test, and the signature must name this commit, so a commit
+# whose staging run failed, or that staging never shipped, is refused. To roll back, tag an earlier commit that staging
+# shipped. Nothing waits for a person: required
 # reviewers are not available to this private repository on GitHub Team (Q-PRODUCTION-APPROVAL, docs/02-plan.md).
 #
 # What this does and which secrets the production environment holds: infra/pipeline/README.md.
@@ -30,9 +32,10 @@ env:
   IMAGE_TAG: sha-${{ github.sha }}
 
 jobs:
-  # The commit is on main, and each image of infra/pipeline/images.json was built and signed by deploy-staging.yml on a staging tag, so
-  # they were built from a commit that passed CI and ran on staging. The digests the tag points to are read once,
-  # verified, and handed to the deploy, so a tag moved afterwards changes nothing.
+  # The commit is on main, and each image of infra/pipeline/images.json carries the signature deploy-staging.yml makes on a
+  # staging tag of this same commit, after staging's smoke test passed: the image was built from a commit that passed CI
+  # and ran on staging. The digests the tag points to are read once, verified, and handed to the deploy, so a tag moved
+  # afterwards changes nothing, and a tag moved to another commit's image fails the commit check.
   verify:
     name: Verify the staging build
     runs-on: ubuntu-24.04
@@ -76,6 +79,7 @@ jobs:
             fi
             cosign verify "$REGISTRY/$image@$digest" \
               --certificate-identity-regexp "$identity" \
+              --certificate-github-workflow-sha "$GITHUB_SHA" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
             echo "verified $image:$IMAGE_TAG is $digest"
             digests+=("$image=$digest")

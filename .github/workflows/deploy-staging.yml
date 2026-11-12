@@ -1,8 +1,9 @@
 name: Deploy staging
 
 # A tag staging/<name> on a commit of main ships that commit to staging: CI, the staging infrastructure applied by
-# Terraform, the images of infra/pipeline/images.json built for amd64 (Civo's nodes), signed and tagged sha-<commit>, the
-# release upgraded by digest, and a smoke test through the public hostnames. To roll back, tag an earlier commit of main.
+# Terraform, the images of infra/pipeline/images.json built for amd64 (Civo's nodes) and tagged sha-<commit>, the release
+# upgraded by digest, a smoke test through the public hostnames, and only then the images signed. To roll back, tag an
+# earlier commit of main.
 #
 # What this does and which secrets the staging environment holds: infra/pipeline/README.md.
 
@@ -99,8 +100,8 @@ jobs:
       - name: Terraform apply
         run: infra/civo/terraform.sh staging apply -input=false -auto-approve
 
-  # One build per image of infra/pipeline/images.json, for linux/amd64, pushed as sha-<commit> and signed keyless on its
-  # digest: the signature names this workflow on a staging tag, which promote-production.yml checks before it deploys.
+  # One build per image of infra/pipeline/images.json, for linux/amd64, pushed as sha-<commit>. Unsigned: the sign job
+  # signs it once staging has run it.
   build:
     name: Build ${{ matrix.name }}
     needs: [guard, ci]
@@ -109,7 +110,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -146,13 +146,6 @@ jobs:
           sbom: true
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - name: Sign the image
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: cosign sign --yes "$REGISTRY/${{ matrix.name }}@$DIGEST"
 
   deploy:
     name: Deploy to staging
@@ -220,3 +213,35 @@ jobs:
           bun infra/pipeline/src/cli.ts smoke --environment staging --wait 300 | tee smoke.txt || status=$?
           { echo '```text'; cat smoke.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+
+  # Each image signed keyless on the digest its tag names, after the smoke test passed: the signature names this workflow,
+  # this commit and a staging tag, which promote-production.yml checks before it deploys. A run whose Terraform, deploy or
+  # smoke test failed signs nothing, so production refuses its images. The concurrency group keeps another staging run
+  # from moving the tag between the deploy, which read the same digests, and this job.
+  sign:
+    name: Sign the images staging ran
+    needs: [guard, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      packages: write
+      id-token: write
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the images
+        env:
+          IMAGES: ${{ needs.guard.outputs.images }}
+        run: |
+          for image in $(jq -r '.[].name' <<< "$IMAGES"); do
+            digest=$(docker buildx imagetools inspect "$REGISTRY/$image:$IMAGE_TAG" --format '{{.Manifest.Digest}}')
+            cosign sign --yes "$REGISTRY/$image@$digest"
+            echo "signed $image:$IMAGE_TAG, $digest"
+          done
+          echo "Signed the images of \`$IMAGE_TAG\`, which staging ran." >> "$GITHUB_STEP_SUMMARY"
