@@ -142,7 +142,7 @@ test("it writes the templates, then the generated list, the install, the migrati
     "ok      install    bun install",
     "ok      migration  mcps/acme/drizzle/0000_initial.sql",
     "ok      database   schema acme in answerable_mcps: migrated",
-    "ok      check      guard 6 files; none names answerable.organisation_id; typecheck 6 files; lint 6 files; test 3 pass, 0 fail; manifest rewritten: commit mcps/acme/manifest.json; generated current; budget no MCP has a database of its own",
+    "ok      check      guard 6 files; none names answerable.organisation_id or builds SQL from a string; typecheck 6 files; lint 6 files; test 3 pass, 0 fail; manifest rewritten: commit mcps/acme/manifest.json; generated current; budget no MCP has a database of its own",
   ])
   // It has its first tool, so Next suggests another.
   expect(lines.slice(8).join("\n")).toBe(`

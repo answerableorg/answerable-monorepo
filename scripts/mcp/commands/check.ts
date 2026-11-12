@@ -11,20 +11,28 @@ const inventories = [".env.example", "packages/config/inventory.json"]
 
 // The setting the platform sets to the caller's organisation on every query (@answerable/mcp-postgres, organisation.ts), which a tool never sets.
 const organisationSetting = /answerable\.organisation_id/gi
+// SQL built from a string rather than with drizzle or its sql tag: sql.raw, or a string or an untagged template passed to execute or query. Such a
+// statement can carry a tool's input into the SQL itself, and SQL that reaches the database can set the organisation and name any MCP's tables.
+const stringSql = /\bsql\s*\.\s*raw\s*\(|\.\s*(?:execute|query)\s*(?:<[^>()]*>)?\s*\(\s*["'`]/g
+// A test may build SQL to set up what it checks: it never serves a call.
+const isTest = (path: string) => path.endsWith(".test.ts") || path.startsWith("src/test/")
 
 /**
- * The files of the MCP's `src`, and each place in them that names the organisation setting, as `src/<path>:<line>`, sorted. A guard against a
- * mistake, not a boundary: a name built at run time gets past it.
+ * The files of the MCP's `src`; each place in them that names the organisation setting; and each place outside its tests that builds SQL from a
+ * string; each as `src/<path>:<line>`, sorted. A guard against a mistake, not a boundary: a name or a statement built at run time gets past it.
  */
 async function settingsIn(dir: string) {
   const found: string[] = []
+  const built: string[] = []
   let files = 0
+  const at = (path: string, text: string, index: number) => `${path}:${text.slice(0, index).split("\n").length}`
   for await (const path of new Bun.Glob("src/**/*").scan({ cwd: dir })) {
     const text = await Bun.file(join(dir, path)).text()
     files += 1
-    for (const match of text.matchAll(organisationSetting)) found.push(`${path}:${text.slice(0, match.index).split("\n").length}`)
+    for (const match of text.matchAll(organisationSetting)) found.push(at(path, text, match.index))
+    if (!isTest(path)) for (const match of text.matchAll(stringSql)) built.push(at(path, text, match.index))
   }
-  return { files, found: found.sort() }
+  return { files, found: found.sort(), built: built.sort() }
 }
 
 // What a test run reports: its counts, and the coverage of every file when the workspace gates it.
@@ -56,11 +64,14 @@ function checkSteps(io: Io, root: string, name: string): { steps: Step[]; rewrit
     steps: [
       {
         name: "guard", fix, run: async () => {
-          const { files, found } = await settingsIn(dir)
+          const { files, found, built } = await settingsIn(dir)
           if (found.length) {
             throw new Error(`mcps/${name} names answerable.organisation_id, which the platform sets to the caller's organisation on every query and a tool never sets: ${found.join(", ")}`)
           }
-          return `${files} files; none names answerable.organisation_id`
+          if (built.length) {
+            throw new Error(`mcps/${name} builds SQL from a string, which can carry a tool's input into the statement, set the organisation and reach every MCP's tables; write it with drizzle or its sql tag: ${built.join(", ")}`)
+          }
+          return `${files} files; none names answerable.organisation_id or builds SQL from a string`
         },
       },
       { name: "typecheck", fix, run: async () => (await run("typecheck"), sources()) },

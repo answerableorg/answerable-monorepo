@@ -230,6 +230,14 @@ const scenarios: Record<string, { fix: string; run: () => Promise<Outcome> }> = 
       return run(["check", "acme"], files)
     },
   },
+  "string-sql": {
+    fix: "bun mcp check acme",
+    run: () => {
+      const files = made("acme", notesList)
+      files["mcps/acme/src/tools/notes-list.ts"] += "export const raw = (title: string) => sql.raw(`select '${title}'`)\n"
+      return run(["check", "acme"], files)
+    },
+  },
   "access-disabled": {
     fix: "bun mcp dev acme",
     run: async () => {

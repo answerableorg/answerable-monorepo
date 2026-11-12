@@ -38,6 +38,8 @@ Define it in `src/db/schema.ts`, with `acmeSchema.table(…)`. This is `mcps/exa
 
 **Every table has `organisation_id` and the `organisationIsolation` policy.** When your tool runs a query, the platform tells Postgres which organisation is calling. The policy then hides every row that belongs to another organisation. A query cannot read or write another organisation's rows, even one that forgets to filter. This matters because one process serves every organisation: a slip in one `where` would otherwise show one client another client's data.
 
+**What the policy protects, and what it does not.** It stops a query that forgets its organisation. It does not stop an injection: the setting it reads is an ordinary session setting, and one login serves every shared MCP, so SQL that reaches the database can set the organisation to another firm's and name any MCP's tables. A tool that passed its input into SQL text would open every shared MCP, for every organisation. So write every query with drizzle, or with its `sql` tag, which sends each value as a parameter; `bun mcp check` refuses `sql.raw` and a string or an untagged template passed to `execute` or `query`.
+
 **The rule for filtering by organisation.** A query on a table with the policy needs no filter on the organisation: Postgres adds it. Data from anywhere else, such as an upstream API or a table without the policy, is constrained by `organisation.id` in your code, so that another organisation's data is not found, never forbidden.
 
 **A table with no `organisation_id` is shared by every organisation.** That is an exception, and a reviewer should see why. Write the reason in a comment above the table. The serving login can read and write every table; row-level security, not grants, limits which rows.
@@ -93,13 +95,14 @@ The code is the same in both. Tables are `pgSchema("acme")` tables either way, s
 
 | Limit | Value |
 | --- | --- |
-| Where a table may be | In your MCP's schema: `bun mcp db generate` refuses a table defined elsewhere. Postgres refuses your tools a new table anywhere, but not a hand-written migration that makes one outside your schema, nor a query that names another MCP's tables: one login migrates, and one serves, every MCP. Review keeps each MCP to its own schema. Such a query still sees only the caller's organisation's rows |
+| Where a table may be | In your MCP's schema: `bun mcp db generate` refuses a table defined elsewhere. Postgres refuses your tools a new table anywhere, but not a hand-written migration that makes one outside your schema, nor a query that names another MCP's tables: one login migrates, and one serves, every MCP. Review keeps each MCP to its own schema. Such a query still sees only the caller's organisation's rows, unless it also sets the organisation, which SQL built from a string can |
 | Code that sets the caller's organisation itself | Never needed: the platform sets it on every query. `bun mcp check` refuses a file of the MCP's `src` that names `answerable.organisation_id`, the setting row-level security reads. That is a guard against a mistake, not a boundary: a name built at run time gets past it, so review must catch that |
+| SQL built from a string | Never: it can carry a tool's input into the statement, and SQL that reaches the database can set the organisation itself and reach every shared MCP's tables. `bun mcp check` refuses `sql.raw` and a string or an untagged template passed to `execute` or `query`, outside the MCP's tests. A guard against a mistake, not a boundary: SQL assembled another way gets past it, so review must catch that |
 | Connections to Civo's database | **Unknown.** Civo's `max_connections` for the database's size has not been measured. `bun mcp check` assumes PostgreSQL's default, 100, and warns when `own` MCPs push the servers' pools past it. `docs/12-deployment.md` in the repository has the arithmetic |
 | Removing an MCP | Its name goes into `mcps/retired.json`, and `bun mcp new` refuses it for ever. Its schema stays in the database. A command that removes it: Not yet. Trigger: the first MCP that is removed |
 
 ## Errors
 
-<CliErrors ids={["unknown-action", "unexpected-flag", "mcp-required", "mcp-not-found", "table-outside-schema", "database-down", "migration-edited", "organisation-setting"]} />
+<CliErrors ids={["unknown-action", "unexpected-flag", "mcp-required", "mcp-not-found", "table-outside-schema", "database-down", "migration-edited", "organisation-setting", "string-sql"]} />
 
 A migration that fails in Postgres itself ends `database failed: acme: 0001_notes.sql failed: …`, with Postgres's own message. Fix the SQL in a migration that has not been applied, or write a new migration. The migration Job's log names the MCP: `kubectl -n answerable logs job/toolbox-migrate`.

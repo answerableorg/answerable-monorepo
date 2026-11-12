@@ -308,6 +308,12 @@ export const errors: readonly ErrorRow[] = [
     action: "Take it out of the MCP's code: queries on the MCP's tables need no organisation, and data from anywhere else is constrained by `organisation.id`. Then run `bun mcp check <name>`.",
   },
   {
+    id: "string-sql", code: "guard-failed", commands: ["check"],
+    see: "guard failed: mcps/acme builds SQL from a string, which can carry a tool's input into the statement, set the organisation and reach every MCP's tables; write it with drizzle or its sql tag: src/tools/notes-list.ts:…",
+    meaning: "A file of the MCP's `src`, outside its tests, passes `sql.raw`, a string or an untagged template to `execute` or `query`. Row-level security stops a query that forgets its organisation, not an injection: SQL that reaches the database runs as the login that serves every MCP, and can set the organisation itself. The check is a guard against a mistake, not a boundary: SQL assembled some other way gets past it, and review must catch that.",
+    action: "Write the query with drizzle's query builder, or with its `sql` tag, which sends every value as a parameter, as in ``db.execute(sql`select … where id = ${id}`)``. Then run `bun mcp check <name>`.",
+  },
+  {
     id: "access-disabled", code: "enable-failed", commands: ["dev"],
     see: "enable failed: Answerable ID holds the organisation's entitlement on the Toolbox (…) with status disabled; enable it with access_enable in the admin MCP, then run bun mcp dev acme again",
     meaning: "A row that gives your organisation access was disabled in your local ID. `bun mcp dev` never enables what someone disabled.",

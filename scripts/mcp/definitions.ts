@@ -75,7 +75,7 @@ export const definitions = {
     summary: "Refuse code that sets the caller's organisation; typecheck, lint and test an MCP, with the conformance kit and its coverage gate; rewrite a stale manifest, the generated files and the environment inventories, to commit",
     flags: {},
     steps: [
-      { name: "guard", does: "Fails when a file of the MCP's `src` names `answerable.organisation_id`, the setting the platform sets to the caller's organisation on every query: a guard against a mistake, not a boundary" },
+      { name: "guard", does: "Fails when a file of the MCP's `src` names `answerable.organisation_id`, the setting the platform sets to the caller's organisation on every query, or when one outside its tests builds SQL from a string (`sql.raw`, or a string or an untagged template passed to `execute` or `query`): a guard against a mistake, not a boundary" },
       { name: "typecheck", does: "Runs tsc over the MCP" },
       { name: "lint", does: "Runs eslint over its src" },
       { name: "test", does: "Runs its tests, the conformance kit included, with the 100% coverage gate" },

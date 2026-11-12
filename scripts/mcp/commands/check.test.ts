@@ -32,7 +32,7 @@ test("it runs the guard, the typecheck, lint and tests in the workspace, the man
     ["scripts/env-inventory.ts", "", undefined],
   ])
   expect(lines(stdout())).toEqual([
-    "ok      guard      4 files; none names answerable.organisation_id",
+    "ok      guard      4 files; none names answerable.organisation_id or builds SQL from a string",
     "ok      typecheck  4 files",
     "ok      lint       4 files",
     "ok      test       6 pass, 0 fail, 100% functions, 98.5% lines",
@@ -79,7 +79,7 @@ test("the generated step also runs bun run env:inventory's script, and an invent
 test("from inside the MCP's directory it needs no name; a failing step stops the check and exits 1", async () => {
   const { code, stdout, stderr } = await run([], recorder(command => ({ code: command.at(-1) === "lint" ? 1 : 0, output: "src/provider.ts\n  1:1  error  no-unused-vars\n" })).exec, join(repository.root, "mcps/acme"))
   expect(code).toBe(1)
-  expect(lines(stdout())).toEqual(["ok      guard      4 files; none names answerable.organisation_id", "ok      typecheck  4 files", "failed  lint      ", ""])
+  expect(lines(stdout())).toEqual(["ok      guard      4 files; none names answerable.organisation_id or builds SQL from a string", "ok      typecheck  4 files", "failed  lint      ", ""])
   expect(stderr()).toBe("lint failed: src/provider.ts\n  1:1  error  no-unused-vars\n\nFinish the job with:\n  bun mcp check acme\n")
 })
 
@@ -97,4 +97,23 @@ test("the guard fails on every place the MCP's src names the organisation settin
   expect([code, ran]).toEqual([1, []])
   expect(lines(stdout())).toEqual(["failed  guard     ", ""])
   expect(stderr()).toBe("guard failed: mcps/acme names answerable.organisation_id, which the platform sets to the caller's organisation on every query and a tool never sets: src/tools/raw.ts:1, src/tools/raw.ts:2, src/views/page.tsx:1\n\nFinish the job with:\n  bun mcp check acme\n")
+})
+
+test("the guard fails on every place outside the tests that builds SQL from a string, and passes drizzle's sql tag and a test's own SQL", async () => {
+  const source = [
+    "export const tagged = (id: string) => db.execute(sql`select * from notes where id = ${id}`)",
+    "export const raw = (title: string) => sql.raw(`select '${title}'`)",
+    "export const text = (id: string) => db.execute(\"select * from notes where id = '\" + id + \"'\")",
+    "export const template = (id: string) => db.execute<{ id: string }>(`select * from notes where id = '${id}'`)",
+    "export const query = (id: string) => db.$client.query('select ' + id)",
+    "export const spaced = (id: string) => sql . raw (id)",
+  ].join("\n")
+  await Bun.write(join(repository.root, "mcps/acme/src/tools/built.ts"), `${source}\n`)
+  await Bun.write(join(repository.root, "mcps/acme/src/tools/built.test.ts"), `${source}\n`)
+  await Bun.write(join(repository.root, "mcps/acme/src/test/seed.ts"), "export const seed = () => sql.raw('insert into notes default values')\n")
+  const { exec, ran } = recorder(() => ({ code: 0, output: passing }))
+  const { code, stdout, stderr } = await run(["acme"], exec)
+  expect([code, ran]).toEqual([1, []])
+  expect(lines(stdout())).toEqual(["failed  guard     ", ""])
+  expect(stderr()).toBe("guard failed: mcps/acme builds SQL from a string, which can carry a tool's input into the statement, set the organisation and reach every MCP's tables; write it with drizzle or its sql tag: src/tools/built.ts:2, src/tools/built.ts:3, src/tools/built.ts:4, src/tools/built.ts:5, src/tools/built.ts:6\n\nFinish the job with:\n  bun mcp check acme\n")
 })

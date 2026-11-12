@@ -87,7 +87,7 @@ test("it writes the tool and its test, adds the import and the entry above the m
   expect(stdout().split("\n").map(line => line.replace(/ \(\d+(\.\d+)? m?s\)$/, ""))).toEqual([
     "ok      write      src/tools/notes-list.ts, src/tools/notes-list.test.ts, src/provider.ts, the notes table in src/db/schema.ts",
     "ok      migration  drizzle/0001_notes.sql",
-    "ok      check      guard 7 files; none names answerable.organisation_id; typecheck 7 files; lint 7 files; test 4 pass, 0 fail; manifest current; generated current; budget no MCP has a database of its own",
+    "ok      check      guard 7 files; none names answerable.organisation_id or builds SQL from a string; typecheck 7 files; lint 7 files; test 4 pass, 0 fail; manifest current; generated current; budget no MCP has a database of its own",
     "",
     "Next:",
     "  git add mcps/acme",
