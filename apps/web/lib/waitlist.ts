@@ -1,6 +1,11 @@
 import { findCountry } from "@answerable/countries"
 import { isHeadcount } from "./headcounts"
-import { EMAIL_PATTERN, MESSAGES, MIN_FILL_MS } from "./waitlist-rules"
+import {
+  EMAIL_PATTERN,
+  MESSAGES,
+  MIN_FILL_MS,
+  plainText,
+} from "./waitlist-rules"
 import {
   createSheetsClient,
   parseSheetsConfig,
@@ -62,14 +67,14 @@ export async function submitWaitlist(
   }
   const country = findCountry(input.country)
   if (!country) errors.country = MESSAGES.country
-  const fullName = input.fullName?.trim()
+  const fullName = input.fullName && plainText(input.fullName)
   if (input.fullName !== undefined) {
     if (!fullName) errors.fullName = MESSAGES.fullName
     else if (fullName.length > FULL_NAME_MAX_LENGTH) {
       errors.fullName = MESSAGES.fullNameLong
     }
   }
-  const businessName = input.business?.name.trim()
+  const businessName = input.business && plainText(input.business.name)
   if (input.business) {
     if (!businessName) errors.businessName = MESSAGES.businessName
     else if (businessName.length > BUSINESS_NAME_MAX_LENGTH) {

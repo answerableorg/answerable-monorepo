@@ -189,6 +189,56 @@ describe("unit: waitlist", () => {
     expect(h.rows[0].business_name).toBe("Acme Architects")
     expect(h.rows[0].business_headcount).toBe("11–50")
   })
+  describe("values a spreadsheet would run as a formula", () => {
+    for (const lead of ["=", "+", "-", "@", "\t=", "\r+"]) {
+      test(`refuses an address that starts with ${JSON.stringify(lead)}`, async () => {
+        const h = harness()
+        expect(await h.submit(`${lead}1+1@x.co`)).toEqual({
+          status: "error",
+          errors: { email: MESSAGES.invalid },
+        })
+        expect(h.opened).toEqual([])
+      })
+    }
+    test("takes an address with those characters after its first", async () => {
+      const h = harness()
+      expect(await h.submit("a=b+c-d@x.co")).toEqual({
+        status: "success",
+        email: "a=b+c-d@x.co",
+      })
+    })
+    for (const lead of ["=", "+", "-", "@", "\t", "\r", "=+ -@"]) {
+      test(`strips a leading ${JSON.stringify(lead)} from the full name and the business name`, async () => {
+        const h = harness()
+        await h.submit(
+          "a@b.com",
+          "GB",
+          { name: `${lead}Acme-Plus`, headcount: "11–50" },
+          `${lead}Ada +Lovelace`,
+        )
+        expect(h.rows[0].full_name).toBe("Ada +Lovelace")
+        expect(h.rows[0].business_name).toBe("Acme-Plus")
+      })
+    }
+    test("asks again for a name that is nothing but those characters", async () => {
+      const h = harness()
+      expect(
+        await h.submit(
+          "a@b.com",
+          "GB",
+          { name: "=+-@", headcount: "11–50" },
+          "-@",
+        ),
+      ).toEqual({
+        status: "error",
+        errors: {
+          fullName: MESSAGES.fullName,
+          businessName: MESSAGES.businessName,
+        },
+      })
+      expect(h.opened).toEqual([])
+    })
+  })
   test("never logs the business name or the full name", async () => {
     const h = harness({ fail: { loadHeaderRow: new Error("boom") } })
     expect(await h.submit("a@b.com", "GB", acme, ada)).toEqual(failed)

@@ -15,7 +15,17 @@ export const MESSAGES = {
   failed: "Something went wrong on our side. Please try again in a moment.",
 } as const
 
-export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+/**
+ * An address never starts with `=`, `+`, `-` or `@`: a spreadsheet or a CSV
+ * import runs a cell that does as a formula. A leading tab or carriage return
+ * is whitespace, which the form trims before it checks.
+ */
+export const EMAIL_PATTERN = /^(?![=+\-@])[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** Free text without the leading characters a spreadsheet runs as a formula; no real name starts with one. */
+export function plainText(text: string): string {
+  return text.replace(/^[=+\-@\s]+/, "").trim()
+}
 
 /**
  * The two form fields a person never sees or fills. `trap` is a text input out
