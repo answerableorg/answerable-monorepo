@@ -134,6 +134,53 @@ test("a deployment cannot start with NODE_ENV=test", async () => {
   expect(databaseFactory).not.toHaveBeenCalled();
 });
 
+test("a process Better Auth treats as a test cannot start outside NODE_ENV=test", async () => {
+  // The suite runs with NODE_ENV=test, which Better Auth read at load.
+  const databaseFactory = mock(createDatabase);
+  await expect(
+    startRuntime(testEnvironment({ nodeEnv: "production", port: 0 }), {
+      databaseFactory,
+    }),
+  ).rejects.toThrow("Better Auth treats this process as a test");
+  expect(databaseFactory).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["1", "Better Auth treats this process as a test"],
+  ["", "Unsafe database runtime role"],
+])(
+  "production with TEST=%p refuses with %p",
+  async (flag, refusal) => {
+    // Better Auth captures NODE_ENV at module load, so production needs a fresh process.
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `
+    import { startRuntime } from "./src/runtime.ts";
+    import { testEnvironment } from "./src/__tests__/support.ts";
+    try {
+      await startRuntime(testEnvironment({ nodeEnv: "production", port: 0 }));
+      console.log("started");
+    } catch (error) {
+      console.log(error.message);
+    }
+    process.exit(0);
+  `,
+      ],
+      {
+        cwd: import.meta.dir + "/..",
+        env: { ...process.env, NODE_ENV: "production", TEST: flag },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const output = await new Response(child.stdout).text();
+    expect(await child.exited).toBe(0);
+    expect(output).toContain(refusal);
+  },
+);
+
 describe("unit: process runtime", () => {
   test("seeds once with environment values, serves, and shuts down idempotently", async () => {
     const environment = testEnvironment({
@@ -221,7 +268,11 @@ test.each(["production", "development"] as const)(
     const database = createDatabase(environment);
     const seed = mock(async () => seedResult);
     await expect(
-      startRuntime(environment, { databaseFactory: () => database, seed }),
+      startRuntime(environment, {
+        allowTestEnvironment: true,
+        databaseFactory: () => database,
+        seed,
+      }),
     ).rejects.toThrow("Unsafe database runtime role");
     expect(seed).not.toHaveBeenCalled();
     expect(database.pool.ended).toBe(true);

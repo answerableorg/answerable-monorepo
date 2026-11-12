@@ -10,6 +10,7 @@ import { createOperationalMetrics } from "./operations/metrics.ts";
 import { startProtocolSweep } from "./operations/protocol-sweep.ts";
 import { createMailTransport } from "./services/mail-transport.ts";
 import { createMagicLinkRequests } from "./services/magic-link-requests.ts";
+import { isTest } from "@better-auth/core/env";
 import { symmetricDecrypt } from "better-auth/crypto";
 import { desc } from "drizzle-orm";
 
@@ -52,7 +53,7 @@ export async function startRuntime(
     signingKeyCheck = assertSigningKeyReadable,
     mailTransport = createMailTransport,
   }: {
-    /** Tests only: NODE_ENV=test drops Better Auth's origin checks and the role check. */
+    /** Tests only: NODE_ENV=test drops Better Auth's origin checks and the role check, and the suite's process is a test to Better Auth whatever the environment says. */
     allowTestEnvironment?: boolean;
     seed?: typeof bootstrap;
     databaseFactory?: typeof createDatabase;
@@ -66,6 +67,13 @@ export async function startRuntime(
   if (environment.nodeEnv === "test" && !allowTestEnvironment)
     throw new Error(
       "NODE_ENV=test is for the test suite: it turns off Better Auth's origin checks and the runtime role check",
+    );
+  // Better Auth also counts a truthy TEST variable as a test: it then skips its
+  // origin checks and gives a request with no client address 127.0.0.1, which
+  // admits it past the ingress check.
+  if (isTest() && !allowTestEnvironment)
+    throw new Error(
+      "Better Auth treats this process as a test (NODE_ENV=test or a truthy TEST), which turns off its origin and client-address checks: unset TEST",
     );
   const database = databaseFactory(environment);
   let server: Bun.Server<undefined>;
