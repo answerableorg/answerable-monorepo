@@ -5,9 +5,17 @@ import {
   createAdminFixture,
   type AdminFixture,
 } from "../../__tests__/admin.ts";
-import { answerOf, magicLinkFlow } from "../../__tests__/magic-link-flow.ts";
+import {
+  answerOf,
+  cookiesAfter,
+  magicLinkFlow,
+} from "../../__tests__/magic-link-flow.ts";
 import { createApp } from "../../__tests__/app.ts";
-import { magicLinkIdentifier } from "../../auth/magic-link.ts";
+import {
+  magicLinkIdentifier,
+  magicLinkKeys,
+  magicLinkProofLifetimeSeconds,
+} from "../../auth/magic-link.ts";
 import {
   magicLinkRequests,
   members,
@@ -771,6 +779,162 @@ describe("POST /magic-link/code", () => {
     const text = await response.text();
     expect(text).toContain('action="/magic-link/code?client_id=a&amp;sig=b"');
     expect(text).toContain('href="/login?client_id=a&amp;sig=b"');
+  });
+});
+
+describe("the proof of a sign-in", () => {
+  const proofName = "answerable-sign-in-proof";
+  const keys = () => magicLinkKeys(fixture.environment);
+  const proofIn = (response: Response) =>
+    response.headers
+      .getSetCookie()
+      .find((line) => line.startsWith(`${proofName}=`));
+  const valueOf = (line: string) =>
+    decodeURIComponent(line.split(";", 1)[0]!.slice(proofName.length + 1));
+
+  /** `count` requests for this address that other browsers and clients made today. */
+  const others = (
+    organization: Awaited<ReturnType<typeof firm>>,
+    email: string,
+    count = 50,
+  ) =>
+    fixture.db.insert(magicLinkRequests).values(
+      Array.from({ length: count }, (_, index) => ({
+        id: createId(),
+        organizationId: organization.id,
+        providerId: organization.magicLink.id,
+        providerRevision: organization.magicLink.revision,
+        purpose: "link" as const,
+        email,
+        tokenIdentifier: `magic-link:others-${createId()}`,
+        browserHash: "other-browser",
+        codeHmac: "other-code",
+        clientHash: `other-client-${index}`,
+        sendStatus: "sent" as const,
+        expiresAt: new Date(),
+      })),
+    );
+
+  test("a link sign-in gives it, HttpOnly, Lax, on the whole origin, for thirty days, and asking never does", async () => {
+    const organization = await firm();
+    const { email } = await flow.listed(organization);
+    const asked = await flow.ask(email);
+    expect(proofIn(asked.response)).toBeUndefined();
+    const response = await flow.follow(asked.token!, asked.cookie);
+    flow.signedIn(response);
+    const line = proofIn(response)!;
+    expect(line).toMatch(
+      new RegExp(
+        `^${proofName}=[^;]+; Max-Age=${magicLinkProofLifetimeSeconds}; Path=/; HttpOnly; SameSite=Lax$`,
+      ),
+    );
+    expect(keys().proves(valueOf(line), email)).toBe(true);
+    expect(line).not.toContain(encodeURIComponent(email));
+  });
+
+  test("a code sign-in gives it, and a wrong code, an unknown link and a refusal never do", async () => {
+    const organization = await firm();
+    const { email } = await flow.listed(organization);
+    const { code, token, cookie } = await flow.ask(email);
+    const wrong = code === "00000000" ? "11111111" : "00000000";
+    expect(proofIn(await flow.enter(wrong, cookie))).toBeUndefined();
+    expect(proofIn(await flow.follow("unknown", cookie))).toBeUndefined();
+    const response = await flow.enter(code!, cookie);
+    flow.signedIn(response);
+    expect(keys().proves(valueOf(proofIn(response)!), email)).toBe(true);
+    // The link of a request its code already used signs nobody in, and proves nothing.
+    expect(proofIn(await flow.follow(token!, cookie))).toBeUndefined();
+
+    const removed = await flow.listed(organization);
+    const late = await flow.ask(removed.email);
+    await fixture.db
+      .update(members)
+      .set({ status: "revoked", revokedAt: new Date() })
+      .where(eq(members.id, removed.memberId));
+    const refused = await flow.follow(late.token!, late.cookie);
+    expect(await refused.text()).toContain("Your access was removed");
+    expect(proofIn(refused)).toBeUndefined();
+  });
+
+  test("a new sign-in keeps the browser's proof of another address", async () => {
+    const organization = await firm();
+    const ada = await flow.listed(organization);
+    const grace = await flow.listed(organization);
+    const first = await flow.ask(ada.email);
+    const signedIn = await flow.follow(first.token!, first.cookie);
+    const held = cookiesAfter(first.cookie, signedIn.headers.getSetCookie());
+    const second = await flow.ask(grace.email, { cookie: held });
+    const response = await flow.enter(second.code!, held);
+    const value = valueOf(proofIn(response)!);
+    expect(keys().proves(value, ada.email)).toBe(true);
+    expect(keys().proves(value, grace.email)).toBe(true);
+  });
+
+  test("the audit's case: fifty requests from others, and the browser that signed in is still mailed", async () => {
+    const organization = await firm();
+    const { email } = await flow.listed(organization);
+    const first = await flow.ask(email);
+    const signedIn = await flow.follow(first.token!, first.cookie);
+    const held = cookiesAfter(first.cookie, signedIn.headers.getSetCookie());
+    expect(held).toContain(`${proofName}=`);
+    await others(organization, email);
+    // From other clients than the sign-in's, which has its minute to wait.
+    const fresh = await flow.ask(email, {
+      headers: { "cf-connecting-ip": "198.51.100.41" },
+    });
+    expect(fresh.mail).toBeUndefined();
+    const proved = await flow.ask(email, {
+      cookie: held,
+      headers: { "cf-connecting-ip": "198.51.100.42" },
+    });
+    expect(proved.mail?.to).toBe(email);
+    flow.signedIn(await flow.enter(proved.code!, held));
+  });
+
+  test("a proved and an unproved request answer alike, whatever becomes of either", async () => {
+    const organization = await firm();
+    const client = { "cf-connecting-ip": "198.51.100.40" };
+    const browserCookie = `answerable-sign-in=${"e".repeat(43)}`;
+    const withProof = (email: string) =>
+      `${browserCookie}; ${proofName}=${encodeURIComponent(keys().prove(null, email))}`;
+    const person = async () => (await flow.listed(organization)).email;
+    const [sentA, sentB, dayA, dayB, minuteA, minuteB] = await Promise.all(
+      Array.from({ length: 6 }, person),
+    );
+    await others(organization, dayA!);
+    await others(organization, dayB!);
+    for (const email of [minuteA!, minuteB!])
+      await flow.ask(email, { cookie: browserCookie, headers: client });
+    const stranger = `proof-stranger@${organization.domain}`;
+    const answers = [];
+    for (const [email, cookie] of [
+      [sentA!, browserCookie],
+      [sentB!, withProof(sentB!)],
+      [dayA!, browserCookie],
+      [dayB!, withProof(dayB!)],
+      [minuteA!, browserCookie],
+      [minuteB!, withProof(minuteB!)],
+      [stranger, browserCookie],
+      [stranger, withProof(stranger)],
+    ] as const) {
+      const { response } = await flow.ask(email, {
+        cookie,
+        headers: { ...fixedId, ...client },
+      });
+      answers.push(await answerOf(response, email));
+    }
+    for (const answer of answers) expect(answer).toEqual(answers[0]!);
+    expect(answers[0]!.body).toContain("Check your email");
+    // What became of each: the proof lifted the day's limit and nothing else.
+    const mailed = (email: string) =>
+      fixture.mail.transport.sent.filter((message) => message.to === email)
+        .length;
+    expect(
+      [sentA, sentB, dayA, dayB, minuteA, minuteB].map((email) =>
+        mailed(email!),
+      ),
+    ).toEqual([1, 1, 0, 1, 1, 1]);
+    expect(mailed(stranger)).toBe(0);
   });
 });
 

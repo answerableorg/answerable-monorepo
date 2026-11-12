@@ -27,6 +27,7 @@ import {
   magicLinkBrowserHash,
   magicLinkIdentifier,
   magicLinkKeys,
+  magicLinkProofLifetimeSeconds,
 } from "../auth/magic-link.ts";
 import { magicLinkRequests } from "../db/schema/index.ts";
 import {
@@ -348,6 +349,110 @@ describe("the limits", () => {
     });
     await fixture.age(email, 86_400);
     expect((await fixture.ask(email)).outcome).toBe("sent");
+  });
+
+  describe("a browser that has signed in with the address", () => {
+    const keys = () => magicLinkKeys(fixture.environment);
+
+    test("fifty requests from others do not refuse it, and it is mailed", async () => {
+      const firm = await fixture.firm();
+      const { email } = await fixture.member(firm);
+      await earlier(firm.id, email, 50);
+      const proof = keys().prove(null, email);
+      expect(await fixture.ask(email)).toEqual({
+        outcome: "limited",
+        limit: "address_day",
+      });
+      const answer = await fixture.ask(email, { proof });
+      expect(answer.outcome).toBe("sent");
+      expect(fixture.mailsTo(email)).toHaveLength(1);
+      // Its request counts in the day others are measured against.
+      expect(await fixture.ask(email, { client: "198.51.100.9" })).toEqual({
+        outcome: "limited",
+        limit: "address_day",
+      });
+    });
+
+    test("a proof of another address, an expired, a tampered and a retired one lift nothing", async () => {
+      const firm = await fixture.firm();
+      const { email } = await fixture.member(firm);
+      await earlier(firm.id, email, 50);
+      const lifetime = magicLinkProofLifetimeSeconds * 1000;
+      const genuine = keys().prove(null, email);
+      const [entry, tag] = genuine.split("~") as [string, string];
+      const retired = magicLinkKeys({
+        betterAuthSecret: "a-retired-secret-of-at-least-32-characters",
+        betterAuthSecrets: undefined,
+      });
+      for (const proof of [
+        keys().prove(null, `other@${firm.domain}`),
+        keys().prove(null, email, Date.now() - lifetime - 1000),
+        `${entry}~${tag.slice(0, -2)}AA`,
+        retired.prove(null, email),
+      ])
+        expect(await fixture.ask(email, { proof })).toEqual({
+          outcome: "limited",
+          limit: "address_day",
+        });
+      expect(fixture.mailsTo(email)).toEqual([]);
+    });
+
+    test("it is still held to one a minute and five an hour", async () => {
+      const firm = await fixture.firm();
+      const { email } = await fixture.member(firm);
+      await earlier(firm.id, email, 50);
+      const proof = keys().prove(null, email);
+      expect((await fixture.ask(email, { proof })).outcome).toBe("sent");
+      expect(await fixture.ask(email, { proof })).toEqual({
+        outcome: "limited",
+        limit: "address_client_minute",
+      });
+      // `earlier` rows are the others' and move with the address; only this client's count here.
+      for (let count = 1; count < 5; count++) {
+        await fixture.age(email, 61);
+        expect((await fixture.ask(email, { proof })).outcome).toBe("sent");
+      }
+      await fixture.age(email, 61);
+      expect(await fixture.ask(email, { proof })).toEqual({
+        outcome: "limited",
+        limit: "address_client_hour",
+      });
+      expect(fixture.mailsTo(email)).toHaveLength(5);
+    });
+
+    test("an address-day refusal logs the address's and the client's keyed hashes, never the address", async () => {
+      const firm = await fixture.firm();
+      const { email } = await fixture.member(firm);
+      await earlier(firm.id, email, 50);
+      const lines = await capturingLogs(async (lines) => {
+        await fixture.ask(email);
+        return lines;
+      });
+      for (const line of lines) {
+        expect(line).not.toContain(email);
+        expect(line).not.toContain(client);
+      }
+      const events = lines.map((line) =>
+        JSON.parse(line.slice(line.indexOf("{"))),
+      );
+      expect(events).toEqual([
+        {
+          event: "magic_link_request",
+          outcome: "limited",
+          limit: "address_day",
+          requestId: expect.any(String),
+          organizationId: firm.id,
+        },
+        {
+          level: "error",
+          event: "magic_link_address_day_refused",
+          requestId: events[0].requestId,
+          organizationId: firm.id,
+          addressHash: keys().addressHash(email),
+          clientHash: keys().clientHash(client),
+        },
+      ]);
+    });
   });
 
   test("no count of a firm's mail holds back its next person", async () => {

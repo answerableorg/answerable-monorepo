@@ -206,7 +206,7 @@ curl --get "https://id.answerable.org/api/admin/v1/organizations/$ORG/sign-in-di
 | `user_disabled`           | The user linked to this tenant's membership is disabled. | Ask platform staff to review the account.                 |
 | `membership_revoked`      | This tenant's membership was revoked.                    | Review whether to reinstate it.                           |
 | `magic_link_not_listed`   | Links are the way in, the firm admits its listed members only, and this address is no effective member here. | List the person, or see [who may ask](/docs/id/magic-links#who-may-ask). |
-| `magic_link_address_limit` | Links are the way in and this address has had 50 mails in the last day. | Wait: the count falls as the oldest passes a day. [Not yet](/docs/id/magic-links#not-yet) can staff clear it. |
+| `magic_link_address_limit` | Links are the way in and this address has had 50 mails in the last day. Only a browser that has signed in with it is still mailed: [the daily limit](/docs/id/magic-links#the-daily-limit-and-a-browser-that-has-signed-in). | Ask from a browser the person has signed in with before. Otherwise wait: the count falls as the oldest passes a day. [Not yet](/docs/id/magic-links#not-yet) can staff clear it. |
 | `magic_link_suppressed`   | Links are the way in and Postmark refused the last send to this address as suppressed (406). | Staff reactivate the address in Postmark: [deliverability](/docs/id/magic-links#deliverability). |
 | `authentication_required` | Local checks found no blocker.                           | Complete a real IdP authentication, or a link's confirmation, to establish identity. |
 

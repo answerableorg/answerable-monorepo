@@ -42,7 +42,9 @@ import {
 /**
  * Judgement, not a standard: the figures others publish differ. A person who asks again
  * within a minute already has a working email. Five an hour from one client covers a slow
- * mail gateway, and fifty a day keeps someone else's requests from filling a mailbox.
+ * mail gateway, and fifty a day keeps someone else's requests from filling a mailbox. A
+ * browser that has signed in with the address is never held to the fifty, so strangers who
+ * reach it cannot lock the person out; its own requests still count towards it.
  */
 export const magicLinkLimits = {
   addressClientPerMinute: 1,
@@ -85,6 +87,9 @@ export type MagicLinkRequest = {
   client: string;
   /** The signed query of the authorisation this sign-in resumes. */
   pendingQuery: string | null;
+  /** The browser's proof of its sign-ins, unchecked: the job checks it against the address.
+   * Absent is no proof. */
+  proof?: string | null;
 };
 
 type Parsed = Omit<MagicLinkRequest, "address"> & { address: MagicLinkAddress };
@@ -135,13 +140,15 @@ export const newAddressOrganizationCount = (organizationId: string) => sql`
   ) as recent`;
 
 /** The first limit this request would go over. A person a firm lists, or a user with no
- * membership there yet, is never held back by a flood of addresses nobody holds. */
+ * membership there yet, is never held back by a flood of addresses nobody holds, and a browser
+ * that proved the address is never held back by the address's day. */
 async function exceededLimit(
   tx: Executor,
   email: string,
   clientHash: string,
   organizationId: string,
   newAddress: boolean,
+  proved: boolean,
 ): Promise<LimitName | undefined> {
   const {
     rows: [address],
@@ -152,7 +159,8 @@ async function exceededLimit(
     return "address_client_minute";
   if (address!.hour >= magicLinkLimits.addressClientPerHour)
     return "address_client_hour";
-  if (address!.day >= magicLinkLimits.addressPerDay) return "address_day";
+  if (!proved && address!.day >= magicLinkLimits.addressPerDay)
+    return "address_day";
   if (!newAddress) return undefined;
   const {
     rows: [client],
@@ -207,7 +215,7 @@ export function createMagicLinkRequests({
   async function reserve(
     tx: Executor,
     requestId: string,
-    { address, browser, client, pendingQuery }: Parsed,
+    { address, browser, client, pendingQuery, proof }: Parsed,
   ) {
     const admission = await admitMagicLink(tx, address);
     // Someone whose access ended asks as anyone else does, with the same page and no mail. An
@@ -225,8 +233,16 @@ export function createMagicLinkRequests({
       clientHash,
       organizationId,
       newAddress,
+      keys.proves(proof, email),
     );
-    if (limit) return { outcome: "limited", limit, organizationId } as const;
+    if (limit)
+      return {
+        outcome: "limited",
+        limit,
+        organizationId,
+        email,
+        clientHash,
+      } as const;
     const token = await issueMagicLinkToken(auth, email);
     const code = newMagicLinkCode();
     const url = new URL("/magic-link", environment.betterAuthUrl);
@@ -280,8 +296,18 @@ export function createMagicLinkRequests({
       clientHash,
       organizationId,
       false,
+      // A browser's proof lifts the day for a link request only, which a person makes at the
+      // form; a directory's callback asks for this code.
+      false,
     );
-    if (limit) return { outcome: "limited", limit, organizationId } as const;
+    if (limit)
+      return {
+        outcome: "limited",
+        limit,
+        organizationId,
+        email,
+        clientHash,
+      } as const;
     const [firm] = await tx
       .select({ name: organizations.name })
       .from(organizations)
@@ -341,12 +367,41 @@ export function createMagicLinkRequests({
   }
 
   /** One line per request: the organisation, the row and what happened. Never the address,
-   * the token, the code, the link or a hash of any of them. */
+   * the token, the code, the link or a hash of any of them; `logLimited` adds the one line
+   * that names keyed hashes. */
   const log = (fields: Record<string, unknown>) =>
     console.log(
       "[id] magic link",
       JSON.stringify({ event: "magic_link_request", ...fields }),
     );
+
+  /**
+   * A refusal's line. An address's day refused also says whose, as keyed hashes, so that staff
+   * can alert on someone's mail being held back and match it to `signin_diagnose`.
+   */
+  function logLimited(
+    requestId: string,
+    {
+      limit,
+      organizationId,
+      email,
+      clientHash,
+    }: {
+      limit: LimitName;
+      organizationId: string;
+      email: string;
+      clientHash: string;
+    },
+  ) {
+    log({ outcome: "limited", limit, requestId, organizationId });
+    if (limit === "address_day")
+      logEvent("magic link", "magic_link_address_day_refused", {
+        requestId,
+        organizationId,
+        addressHash: keys.addressHash(email),
+        clientHash,
+      });
+  }
 
   async function run(request: Parsed) {
     const requestId = createId();
@@ -359,14 +414,8 @@ export function createMagicLinkRequests({
       log({ outcome: "stranger" });
       return { outcome: "stranger" } as const;
     }
-    const { organizationId } = reservation;
     if (reservation.outcome === "limited") {
-      log({
-        outcome: "limited",
-        limit: reservation.limit,
-        requestId,
-        organizationId,
-      });
+      logLimited(requestId, reservation);
       return { outcome: "limited", limit: reservation.limit } as const;
     }
     return deliver(requestId, reservation);
@@ -446,12 +495,7 @@ export function createMagicLinkRequests({
       );
       if (reservation.outcome === "conflict") return "conflict" as const;
       if (reservation.outcome === "limited") {
-        log({
-          outcome: "limited",
-          limit: reservation.limit,
-          requestId,
-          organizationId: reservation.organizationId,
-        });
+        logLimited(requestId, reservation);
         return "limited" as const;
       }
       // A send that will never run must not hold a limit or look as if it might.

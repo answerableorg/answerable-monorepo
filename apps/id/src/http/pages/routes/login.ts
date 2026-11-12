@@ -25,7 +25,11 @@ import {
   pendingOAuthQuery,
 } from "../login-routing.ts";
 import { describeError, type ErrorDescription } from "../error-copy.ts";
-import { holdSignInCookie, signInCookieValue } from "../sign-in-cookie.ts";
+import {
+  holdSignInCookie,
+  readSignInProof,
+  signInCookieValue,
+} from "../sign-in-cookie.ts";
 import { ChooseSignIn, LoginForm, SignedIn } from "../views/login.tsx";
 import { CheckEmail } from "../views/magic-link.tsx";
 
@@ -162,6 +166,7 @@ async function askForLink(
     browser,
     client: context.get("clientIp") ?? "unresolved",
     pendingQuery: await resumableQuery(context, pendingOAuthQuery(query)),
+    proof: readSignInProof(context),
   });
   if (!taken) {
     context.status(503);

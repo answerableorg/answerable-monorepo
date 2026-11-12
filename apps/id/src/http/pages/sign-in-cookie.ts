@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { getCookie, setCookie } from "hono/cookie";
 
-import { magicLinkTtlMinutes } from "../../auth/magic-link.ts";
+import {
+  magicLinkKeys,
+  magicLinkProofLifetimeSeconds,
+  magicLinkTtlMinutes,
+} from "../../auth/magic-link.ts";
 import type { PageContext } from "./gateway.ts";
 
 /** Thirty-two random bytes, base64url. Anything else is not ID's and is replaced. */
@@ -9,14 +13,13 @@ const value = /^[A-Za-z0-9_-]{43}$/;
 
 /** What ties a sign-in to one browser. `__Host-` needs `Secure`, and `Secure` needs https, so
  * a plain http origin, as in local development and the test fixture, drops both, here only. */
-function cookieFor(context: PageContext) {
+function cookieFor(context: PageContext, name = "answerable-sign-in") {
   const secure =
     new URL(context.get("environment").betterAuthUrl).protocol === "https:";
-  return {
-    name: secure ? "__Host-answerable-sign-in" : "answerable-sign-in",
-    secure,
-  };
+  return { name: secure ? `__Host-${name}` : name, secure };
 }
+
+const proofCookie = "answerable-sign-in-proof";
 
 /** The browser's sign-in value, when it holds one of ID's. */
 export function readSignInCookie(context: PageContext) {
@@ -47,4 +50,33 @@ export function holdSignInCookie(
     maxAge: magicLinkTtlMinutes * 60,
   });
   return browser;
+}
+
+/** The browser's proof of its sign-ins, as it holds it: the job checks it against the address. */
+export const readSignInProof = (context: PageContext) =>
+  getCookie(context, cookieFor(context, proofCookie).name) ?? null;
+
+/**
+ * After a sign-in by link or code: this browser has proved this address, so its own requests
+ * for it are never refused because others used up the address's day. The cookie holds no
+ * address, only what ID's key made of it, and HttpOnly keeps it from a page's scripts. The
+ * sign-in cookie's attributes otherwise: it authorises nothing, so `Strict` would add nothing.
+ */
+export function holdSignInProof(context: PageContext, email: string) {
+  const { name, secure } = cookieFor(context, proofCookie);
+  setCookie(
+    context,
+    name,
+    magicLinkKeys(context.get("environment")).prove(
+      readSignInProof(context),
+      email,
+    ),
+    {
+      path: "/",
+      httpOnly: true,
+      secure,
+      sameSite: "Lax",
+      maxAge: magicLinkProofLifetimeSeconds,
+    },
+  );
 }

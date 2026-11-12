@@ -15,7 +15,7 @@ import {
   serviceOrigin,
   type PageContext,
 } from "../gateway.ts";
-import { readSignInCookie } from "../sign-in-cookie.ts";
+import { holdSignInProof, readSignInCookie } from "../sign-in-cookie.ts";
 import { ErrorView } from "../views/error.tsx";
 import {
   CodeRefused,
@@ -71,6 +71,7 @@ export function logFailure(context: PageContext, path: string, error: unknown) {
 async function confirm(
   context: PageContext,
   row: {
+    email: string;
     tokenIdentifier: string | null;
     pendingOauthQuery: string | null;
   },
@@ -103,6 +104,10 @@ async function confirm(
     url?: string;
     refused?: "removed" | "invalid";
   };
+  if (!data.url && setCookies.length === 0)
+    return data.refused === "removed" ? renderRemoved(context) : null;
+  // Signed in, by link or code: this browser has proved the address.
+  holdSignInProof(context, row.email);
   // The session is committed by the time the provider resumes, so a resume that failed still
   // signed the person in.
   if (data.url)
@@ -112,8 +117,7 @@ async function confirm(
         : data.url,
       303,
     );
-  if (setCookies.length > 0) return context.redirect("/login", 303);
-  return data.refused === "removed" ? renderRemoved(context) : null;
+  return context.redirect("/login", 303);
 }
 
 export function registerMagicLink(app: Hono<AppEnvironment>) {

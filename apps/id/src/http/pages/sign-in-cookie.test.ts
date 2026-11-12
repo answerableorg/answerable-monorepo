@@ -1,9 +1,15 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 
 import { testEnvironment } from "../../__tests__/support.ts";
 import type { AppEnvironment } from "../context.ts";
-import { holdSignInCookie, readSignInCookie } from "./sign-in-cookie.ts";
+import { magicLinkKeys } from "../../auth/magic-link.ts";
+import {
+  holdSignInCookie,
+  holdSignInProof,
+  readSignInCookie,
+  readSignInProof,
+} from "./sign-in-cookie.ts";
 
 function app(betterAuthUrl: string) {
   const app = new Hono<AppEnvironment>();
@@ -14,6 +20,13 @@ function app(betterAuthUrl: string) {
   app.post("/hold", (context) => context.text(holdSignInCookie(context)));
   app.get("/read", (context) =>
     context.json({ value: readSignInCookie(context) }),
+  );
+  app.post("/prove", (context) => {
+    holdSignInProof(context, "ada@contoso.com");
+    return context.body(null, 204);
+  });
+  app.get("/proof", (context) =>
+    context.json({ value: readSignInProof(context) }),
   );
   return app;
 }
@@ -92,5 +105,58 @@ test("each form reads only its own name", async () => {
   ).toEqual({ value: held });
   expect(await read("http://localhost:47300", "other=1")).toEqual({
     value: null,
+  });
+});
+
+describe("the proof of a sign-in", () => {
+  const keys = magicLinkKeys(testEnvironment());
+
+  test("on https it is a __Host- cookie: Secure, Path=/, HttpOnly, Lax and thirty days", async () => {
+    const response = await app("https://id.example.com").request("/prove", {
+      method: "POST",
+    });
+    const [line] = response.headers.getSetCookie();
+    expect(line).toMatch(
+      /^__Host-answerable-sign-in-proof=[^;]+; Max-Age=2592000; Path=\/; HttpOnly; Secure; SameSite=Lax$/,
+    );
+    const value = decodeURIComponent(line!.split(";", 1)[0]!.split("=")[1]!);
+    expect(keys.proves(value, "ada@contoso.com")).toBe(true);
+  });
+
+  test("on plain http it drops the prefix and Secure, and nothing else", async () => {
+    const response = await app("http://localhost:47300").request("/prove", {
+      method: "POST",
+    });
+    expect(response.headers.getSetCookie()[0]).toMatch(
+      /^answerable-sign-in-proof=[^;]+; Max-Age=2592000; Path=\/; HttpOnly; SameSite=Lax$/,
+    );
+  });
+
+  test("a new proof adds to the one the browser holds", async () => {
+    const held = keys.prove(null, "grace@contoso.com");
+    const response = await app("https://id.example.com").request("/prove", {
+      method: "POST",
+      headers: {
+        cookie: `__Host-answerable-sign-in-proof=${encodeURIComponent(held)}`,
+      },
+    });
+    const [line] = response.headers.getSetCookie();
+    const value = decodeURIComponent(line!.split(";", 1)[0]!.split("=")[1]!);
+    expect(keys.proves(value, "grace@contoso.com")).toBe(true);
+    expect(keys.proves(value, "ada@contoso.com")).toBe(true);
+  });
+
+  test("each form reads only its own name, and reads the value as it is, unchecked", async () => {
+    const read = async (url: string, cookie: string) =>
+      (await app(url).request("/proof", { headers: { cookie } })).json();
+    expect(
+      await read("https://id.example.com", "__Host-answerable-sign-in-proof=x"),
+    ).toEqual({ value: "x" });
+    expect(
+      await read("https://id.example.com", "answerable-sign-in-proof=x"),
+    ).toEqual({ value: null });
+    expect(
+      await read("http://localhost:47300", "answerable-sign-in-proof=x"),
+    ).toEqual({ value: "x" });
   });
 });

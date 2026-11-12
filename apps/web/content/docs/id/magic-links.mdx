@@ -142,7 +142,8 @@ A **client** is the address ID sees for the request: `cf-connecting-ip`. Limits 
 | Limit | Value |
 | --- | --- |
 | Mail to one address from one client | 1 a minute, 5 an hour |
-| Mail to one address, from anyone | 50 a day |
+| Mail to one address, from anyone | 50 a day, except in a browser that has signed in with it |
+| A browser's proof of a sign-in | 30 days from its latest sign-in, for up to 5 addresses |
 | Mail to an address no user holds (domain mode) | 100 an hour per client, 500 a day per organisation |
 | A link and its code | 30 minutes |
 | Tries at a code, per request | 3. The third wrong code ends the request, its link included |
@@ -156,9 +157,19 @@ A **client** is the address ID sees for the request: `cf-connecting-ip`. Limits 
 - **Beyond a limit the person sees the usual page and gets no mail.** Nothing tells them why, and ID logs `limited` with the limit's name.
 - **New addresses.** Beyond the new-address budgets a new person gets no mail, so a firm-wide start uses `members_import` first: a listed person is not a new address.
 - **A full queue says so.** Over 500 waiting, the page answers `503` with **We can't send email just now**. That depends on no address.
-- **The daily limit has no reset.** A person at 50 mails a day gets no mail until the oldest passes a day. [`signin_diagnose`](/docs/admin#why-did-someone-get-no-mail) shows the count.
+- **The daily limit has no reset.** At 50 mails a day, a browser that has not signed in with the address gets no mail until the oldest passes a day. [`signin_diagnose`](/docs/admin#why-did-someone-get-no-mail) shows the count.
 - **A link opened after the application's request ended** still signs in. The page then says to go back to the application and start again from there.
 - **The one-minute limit is shared** with the mailbox code of a directory connection. A person who asks for a link and picks the directory within the minute is told no code is waiting, and to wait.
+
+### The daily limit and a browser that has signed in
+
+- **What the daily limit protects.** A mailbox: whoever knows an address can make at most 50 mails reach it in a day.
+- **A browser that has signed in is never refused for the day.** When a sign-in by link or code completes, ID gives that browser a proof of the address: an HttpOnly cookie on ID's own host (`__Host-answerable-sign-in-proof`, `SameSite=Lax`) holding a keyed hash of the address and an expiry, never the address. Its requests for that address are mailed however many others have asked, so a stranger cannot lock a person out of their own browser.
+- **Everything else still applies to it.** Its requests count towards the 50 that others are measured against, and are held to 1 a minute and 5 an hour. The page answers the same with or without the proof.
+- **It is not a session.** It signs nobody in and remembers no device: the person still needs the link or the code, with its 3 tries.
+- **It lasts 30 days from the latest sign-in**, which a person on links renews whenever their 24-hour session ends. One browser holds proofs for up to 5 addresses, for a shared office machine; a sixth drops the one signed in longest ago. Rotating ID's secret ends every proof, as it ends codes in flight, and each browser earns a new one at its next sign-in. A sign-in through a directory gives none.
+- **The most mail one address can get in a day** is 50 that anyone can trigger, plus 5 an hour (120 a day) from each network address its holder's signed-in browsers ask from: 170 for a person on one network.
+- **What remains.** A person signing in for the first time in a new browser (a new machine, cleared cookies, a private window) while someone uses up their 50 gets no mail until the oldest passes a day. ID logs `magic_link_address_day_refused` with keyed hashes of the address and the client, never the address, and `signin_diagnose` shows `magic_link_address_limit` with the count. Staff tell the person to ask from a browser they have signed in with before, or to wait. Clearing the count is [not yet](#not-yet) possible.
 
 ## Errors
 

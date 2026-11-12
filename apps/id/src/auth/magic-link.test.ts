@@ -8,6 +8,8 @@ import {
   magicLinkIdentifier,
   magicLinkKeys,
   magicLinkPlugin,
+  magicLinkProofAddresses,
+  magicLinkProofLifetimeSeconds,
   newMagicLinkCode,
 } from "./magic-link.ts";
 
@@ -93,6 +95,154 @@ describe("the keyed hashes", () => {
     );
     expect(ring.codeHmac(requestId, "12345678")).not.toBe(
       keys.codeHmac(requestId, "12345678"),
+    );
+  });
+});
+
+describe("a browser's proof of an address", () => {
+  const keys = magicLinkKeys({
+    betterAuthSecret,
+    betterAuthSecrets: undefined,
+  });
+  const now = Date.UTC(2026, 10, 12);
+  const day = 86_400_000;
+  const ada = "ada@contoso.com";
+  const grace = "grace@contoso.com";
+
+  test("holds a keyed hash of each address and its expiry, never the address, under a MAC", () => {
+    const value = keys.prove(null, ada, now);
+    expect(value).not.toContain("ada");
+    expect(value).not.toContain("contoso");
+    const expected = createHmac(
+      "sha256",
+      Buffer.from(
+        hkdfSync(
+          "sha256",
+          betterAuthSecret,
+          "",
+          "answerable:magic-link:address:v1",
+          32,
+        ),
+      ),
+    )
+      .update(ada)
+      .digest("base64url");
+    expect(keys.addressHash(ada)).toBe(expected);
+    const expires = Math.floor(now / 1000) + magicLinkProofLifetimeSeconds;
+    expect(value.startsWith(`${expected}.${expires}~`)).toBe(true);
+    // Only characters a cookie carries as they are.
+    expect(value).toMatch(/^[A-Za-z0-9_.~-]+$/);
+  });
+
+  test("proves its own address until it expires, and no other", () => {
+    const value = keys.prove(null, ada, now);
+    expect(keys.proves(value, ada, now)).toBe(true);
+    expect(keys.proves(value, grace, now)).toBe(false);
+    const lifetime = magicLinkProofLifetimeSeconds * 1000;
+    expect(keys.proves(value, ada, now + lifetime - 1000)).toBe(true);
+    expect(keys.proves(value, ada, now + lifetime)).toBe(false);
+  });
+
+  test("lasts thirty days from the newest sign-in", () => {
+    expect(magicLinkProofLifetimeSeconds).toBe(30 * 86_400);
+    const first = keys.prove(null, ada, now);
+    const renewed = keys.prove(first, ada, now + 20 * day);
+    expect(keys.proves(renewed, ada, now + 45 * day)).toBe(true);
+    // Renewing replaces the entry rather than adding one.
+    expect(renewed.split("~")).toHaveLength(2);
+  });
+
+  test("a tampered, truncated or foreign value proves nothing", () => {
+    const value = keys.prove(null, ada, now);
+    const [entry, tag] = value.split("~") as [string, string];
+    const [hash, expires] = entry.split(".") as [string, string];
+    const later = `${hash}.${Number(expires) + 86_400}`;
+    for (const forged of [
+      `${later}~${tag}`,
+      `${entry}~${tag.slice(1)}`,
+      `${entry}~${tag.slice(0, -1)}A`,
+      `${keys.prove(null, grace, now).split("~")[0]}~${tag}`,
+      entry,
+      tag,
+      "",
+      "~",
+      `${entry}~${entry}~${tag}`,
+      `x${"~".repeat(2_000)}`,
+    ])
+      expect(keys.proves(forged, ada, now)).toBe(false);
+    expect(keys.proves(null, ada, now)).toBe(false);
+    expect(keys.proves(undefined, ada, now)).toBe(false);
+    // A true MAC over entries of the wrong shape proves nothing either.
+    const proofKey = Buffer.from(
+      hkdfSync(
+        "sha256",
+        betterAuthSecret,
+        "",
+        "answerable:magic-link:proof:v1",
+        32,
+      ),
+    );
+    const signed = (payload: string) =>
+      `${payload}~${createHmac("sha256", proofKey).update(payload).digest("base64url")}`;
+    expect(keys.proves(signed(entry), ada, now)).toBe(true);
+    for (const payload of [
+      hash,
+      `${hash}.`,
+      `${hash}.soon`,
+      `${hash}x.${expires}`,
+    ])
+      expect(keys.proves(signed(payload), ada, now)).toBe(false);
+  });
+
+  test("a proof made under a secret the ring no longer leads with proves nothing", () => {
+    const retired = magicLinkKeys({
+      betterAuthSecret: "a-retired-secret-of-at-least-32-characters",
+      betterAuthSecrets: undefined,
+    });
+    const rotated = magicLinkKeys({
+      betterAuthSecret,
+      betterAuthSecrets: [
+        { version: 2, value: "the-active-secret-of-at-least-32-characters" },
+        { version: 1, value: betterAuthSecret },
+      ],
+    });
+    expect(keys.proves(retired.prove(null, ada, now), ada, now)).toBe(false);
+    expect(rotated.proves(keys.prove(null, ada, now), ada, now)).toBe(false);
+  });
+
+  test(`holds ${magicLinkProofAddresses} addresses, and a new one past that drops the one signed in longest ago`, () => {
+    expect(magicLinkProofAddresses).toBe(5);
+    const addresses = Array.from(
+      { length: magicLinkProofAddresses + 1 },
+      (_, index) => `person-${index}@contoso.com`,
+    );
+    let value: string | null = null;
+    addresses.forEach((address, index) => {
+      value = keys.prove(value, address, now + index * 1000);
+    });
+    const at = now + addresses.length * 1000;
+    expect(keys.proves(value, addresses[0]!, at)).toBe(false);
+    for (const address of addresses.slice(1))
+      expect(keys.proves(value, address, at)).toBe(true);
+    expect(value!.length).toBeLessThan(400);
+  });
+
+  test("a new proof keeps the live entries of the value it replaces and drops the expired", () => {
+    const old = keys.prove(null, grace, now);
+    const later = now + magicLinkProofLifetimeSeconds * 1000 + day;
+    const both = keys.prove(
+      keys.prove(null, grace, now + day),
+      ada,
+      now + 2 * day,
+    );
+    expect(keys.proves(both, grace, now + 2 * day)).toBe(true);
+    expect(keys.proves(both, ada, now + 2 * day)).toBe(true);
+    const fresh = keys.prove(old, ada, later);
+    expect(keys.proves(fresh, grace, later)).toBe(false);
+    expect(fresh.split("~")).toHaveLength(2);
+    // A value that is not a proof is replaced, not kept.
+    expect(keys.prove("not-a-proof", ada, now)).toBe(
+      keys.prove(null, ada, now),
     );
   });
 });

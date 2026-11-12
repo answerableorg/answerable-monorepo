@@ -61,3 +61,12 @@ Kept by the owner's decision: domain mode, `/connect-directory`, Better Auth's p
 - An absent `Origin` on `POST /login` stays allowed: a browser always sends one on a post, and a client without one is not a cross-site victim.
 - An image behind the database applies nothing and leaves ID's runtime role grants as the newer image set them.
 - The stop tools take an address or an id, both optional in the schema and checked at prepare, because hosts refuse a top-level choice in a tool's input.
+
+## Decided by the owner on 12 November 2026
+
+**A browser that has already completed a sign-in by link or code for an address is never refused that address's 50 a day because of other people's requests.** The pre-production audit (A-S1) showed that 50 requests from anyone stopped a named person's mail for a day, from every browser, while the page said "check your email"; a firm on links only had no other way in, and the attack could repeat daily.
+
+- **The proof.** A completed sign-in sets an HttpOnly cookie on ID's own host, `__Host-answerable-sign-in-proof` (`Secure`, `SameSite=Lax`, path `/`): a keyed hash of the address and an expiry per entry, under a MAC from the same keys as the code's HMAC (the ring's first secret, so a rotation ends proofs as it ends codes in flight). 30 days from the latest sign-in, 5 addresses a browser, the oldest dropped past that. No table and no migration.
+- **The rule.** A valid proof for the requested address lifts the day's limit for that request alone. The minute and hour limits per address and client, the new-address budgets, admission, the queue and the page are unchanged. The proved browser's requests still count towards the 50, so the 50 still bounds what anyone without a proof can trigger: at most 170 mails a day reach an address whose holder asks from one network.
+- **It refines** the 4 November limits and narrows `Q-MAGIC-LIMIT-CLEAR`: the person's own browser is no longer locked out, but a first sign-in in a new browser during an attack still is. `magic_link_address_day_refused` logs each such refusal with keyed hashes, for the alert `Q-MAGIC-ALERTING` will set.
+- **Not** a session, a remembered device or a way round the code's 3 tries.

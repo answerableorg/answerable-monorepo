@@ -29,6 +29,26 @@ export const magicLinkGrantLifetimeSeconds = 604_800;
 /** How many comparisons one request's code gets. */
 export const magicLinkCodeAttempts = 3;
 
+/**
+ * How long a browser's proof of an address lasts from its newest sign-in. A person on links
+ * signs in again whenever their 24-hour session ends and, at the latest, when a 7-day grant
+ * needs a new authorisation; each sign-in renews the proof. Thirty days keeps it through a
+ * holiday of a few weeks. A longer life costs little: the proof only exempts this browser from
+ * the address's daily limit, and lets nobody sign in.
+ */
+export const magicLinkProofLifetimeSeconds = 30 * 86_400;
+
+/**
+ * How many addresses one browser's proof holds: a shared office machine signs in a few people.
+ * A new address past this drops the one signed in longest ago, whose browser is then treated as
+ * any other until it signs in again. Five entries keep the cookie under 400 bytes.
+ */
+export const magicLinkProofAddresses = 5;
+
+/** A proof is a few entries; anything far longer is not one, and is not hashed. */
+const maxProofLength = 1_024;
+const proofEntry = /^([A-Za-z0-9_-]{43})\.(\d{1,12})$/;
+
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("base64url");
 
@@ -101,8 +121,32 @@ export function magicLinkKeys({
     Buffer.from(hkdfSync("sha256", secret, "", label, 32));
   const code = key("answerable:magic-link:code:v1");
   const client = key("answerable:magic-link:client:v1");
+  const address = key("answerable:magic-link:address:v1");
+  const proof = key("answerable:magic-link:proof:v1");
   const mac = (of: Buffer, value: string) =>
     createHmac("sha256", of).update(value).digest("base64url");
+  const addressHash = (email: string) => mac(address, email);
+
+  /** The live entries of a proof whose MAC holds, and none of anything else. */
+  function proofEntries(value: string | null | undefined, now: number) {
+    if (!value || value.length > maxProofLength) return [];
+    const at = value.lastIndexOf("~");
+    const payload = value.slice(0, at);
+    const actual = Buffer.from(mac(proof, payload));
+    const expected = Buffer.from(value.slice(at + 1));
+    if (
+      at < 0 ||
+      actual.length !== expected.length ||
+      !timingSafeEqual(actual, expected)
+    )
+      return [];
+    const entries = payload.split("~").map((entry) => proofEntry.exec(entry));
+    if (entries.some((entry) => entry === null)) return [];
+    return entries
+      .map((entry) => ({ hash: entry![1]!, expires: Number(entry![2]) }))
+      .filter(({ expires }) => expires * 1000 > now);
+  }
+
   return {
     /** Bound to the request, so one code gives two different values on two requests. */
     codeHmac: (requestId: string, value: string) =>
@@ -116,5 +160,34 @@ export function magicLinkKeys({
       );
     },
     clientHash: (value: string) => mac(client, value),
+    /** A normalised address, keyed: what a proof holds and an `address_day` refusal logs. */
+    addressHash,
+    /**
+     * A browser's proof that it completed a sign-in for this address: the value it held, with
+     * this address renewed and its expired entries gone, newest first, under a MAC. Only ID can
+     * make one, and it names no address. Keyed by the ring's first secret, as a code is, so a
+     * rotation that ends in-flight codes ends proofs too.
+     */
+    prove(held: string | null | undefined, email: string, now = Date.now()) {
+      const hash = addressHash(email);
+      const entries = [
+        {
+          hash,
+          expires: Math.floor(now / 1000) + magicLinkProofLifetimeSeconds,
+        },
+        ...proofEntries(held, now).filter((entry) => entry.hash !== hash),
+      ]
+        .sort((a, b) => b.expires - a.expires)
+        .slice(0, magicLinkProofAddresses);
+      const payload = entries
+        .map((entry) => `${entry.hash}.${entry.expires}`)
+        .join("~");
+      return `${payload}~${mac(proof, payload)}`;
+    },
+    /** Whether this value proves a sign-in for this address that has not expired. */
+    proves(value: string | null | undefined, email: string, now = Date.now()) {
+      const hash = addressHash(email);
+      return proofEntries(value, now).some((entry) => entry.hash === hash);
+    },
   };
 }

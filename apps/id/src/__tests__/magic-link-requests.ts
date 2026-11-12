@@ -179,6 +179,7 @@ export async function openMagicLinkFixture() {
       browser?: string;
       client?: string;
       pendingQuery?: string | null;
+      proof?: string | null;
     } = {},
   ) =>
     requests.process({
