@@ -13,11 +13,13 @@ What the first staging deploy on Civo established, run by run, with the numbers 
 
 ## The environment after `staging/third`
 
+The addresses and the fingerprint were recorded here on 2026-10-23 and are redacted now that the repository is public: each value is replaced by what it is. Terraform's state and outputs hold the addresses, and `ops-bootstrap`'s log the fingerprint.
+
 | Fact | Value |
 | --- | --- |
-| Cluster | `answerable-staging-cluster`, API `https://74.220.17.101:6443` |
-| Load balancer | `74.220.16.255` |
-| Database | `answerable-staging-database`, `10.10.0.6:5432` on the private network |
+| Cluster | `answerable-staging-cluster`, API `https://<the cluster's public IPv4 address>:6443` |
+| Load balancer | `<its reserved public IPv4 address>` |
+| Database | `answerable-staging-database`, `<its address in 10.10.0.0/24>:5432` on the private network |
 | Origin certificate expires | 2041-10-19 (Cloudflare Origin CA; calendar it, nothing renews it) |
 | GitHub environment | 12 names: the five pasted, the two state keys, ID's two secrets, `KUBE_SERVER`, `KUBE_CA`, `KUBE_TOKEN` |
 
@@ -25,8 +27,8 @@ What the first staging deploy on Civo established, run by run, with the numbers 
 
 - It serves TLS. Chain: leaf `CN=pg-db-answer-25dc-08bd5a-primary` issued by `CN=dbaas-ca`; root `CN=dbaas-ca`, self-signed.
 - Root validity: 2026-07-28 to **2027-07-28**. One year. The ConfigMap `postgres-ca` pins it (trust on first use); before it expires, delete the ConfigMap and run `bootstrap` again, or every login fails to verify. Calendar: June 2027.
-- Root SHA-256 fingerprint: `81:6B:F3:2A:5A:C5:82:4F:3F:E5:98:85:36:B5:3A:2E:87:73:7E:D7:DC:E5:43:7F:91:27:EF:35:B7:E5:D9:41`. Civo shows no fingerprint to compare against.
-- Leaf names: `DNS:pg-db-answer-25dc-08bd5a-primary`, `DNS:pg-db-answer-25dc-08bd5a-ha-headless`. They do not cover `10.10.0.6`, the host every URL names. The migration Job connected with `sslmode=verify-full` regardless, on Bun. **Open question:** what identity check Bun's TLS performs for an IP host; until proven, treat the connection as chain-verified against the pinned root (verify-ca semantics), not name-verified.
+- Root SHA-256 fingerprint: `<32 bytes, colon-separated hex, as ops-bootstrap logged it>`. Civo shows no fingerprint to compare against.
+- Leaf names: `DNS:pg-db-answer-25dc-08bd5a-primary`, `DNS:pg-db-answer-25dc-08bd5a-ha-headless`. They do not cover the database's private address, the host every URL names. The migration Job connected with `sslmode=verify-full` regardless, on Bun. **Open question:** what identity check Bun's TLS performs for an IP host; until proven, treat the connection as chain-verified against the pinned root (verify-ca semantics), not name-verified.
 
 ## Image pulls
 
