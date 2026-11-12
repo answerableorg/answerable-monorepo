@@ -47,7 +47,7 @@ export async function startAdminStack(id: Id, { adminHost, toolboxHost, fetch }:
   await registerResource(admin, { identifier: toolboxResource, scopes: toolboxScopes, accessTokenTtl: 900 })
   await registerResource(admin, { identifier: toolboxAdmin, scopes: ["toolbox:admin"], accessTokenTtl: 300 })
   await registerClient(admin, { ...toolboxHost, scopes: ["toolbox"] })
-  const hub = await registerMachine(admin, platform, "toolbox-hub", { [manifest.adminResource]: ["platform:read", "platform:write"] })
+  const hub = await registerMachine(admin, platform, "toolbox-hub", { [manifest.adminResource]: ["platform:read"] })
 
   step("Registering the admin MCP, its host client, its three role groups and its machine client")
   await registerResource(admin, { identifier: adminResource, scopes: ["admin", ...grants], accessTokenTtl: 900 })

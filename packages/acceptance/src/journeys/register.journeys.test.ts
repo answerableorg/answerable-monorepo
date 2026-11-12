@@ -152,3 +152,50 @@ test("a deployment registered before platform:users gets it from the next run: t
   expect(refused.status).toBe(403)
   expect(((await refused.json()) as { code: string }).code).toBe("insufficient_scope")
 })
+
+test("a deployment whose Toolbox client held platform:write is narrowed by the next run: the registrar sets its ceiling, then its capability, to platform:read exactly, and ID refuses it a write, even with a token issued before", async () => {
+  const { manifest } = id
+  const platform = manifest.platform!.organizationId
+  const call = adminApi({ id: manifest.idOrigin, token, rootLocked: "locked" })
+  const declaration = (scopes: string[]) => ({ clientId: "toolbox-hub", name: "Toolbox", organizationId: platform, tokenEndpointAuthMethod: "client_secret_basic" as const, grantTypes: ["client_credentials"], clientCredentialsScopes: scopes })
+  const capability = (scopes: string[]) => ({ clientId: "toolbox-hub", resource: manifest.adminResource, grantKind: "client_credentials", scopes })
+  const ask = (secret: string, scope: string) => fetch(`${manifest.idOrigin}/auth/oauth2/token`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${Buffer.from(`toolbox-hub:${secret}`).toString("base64")}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "client_credentials", resource: manifest.adminResource, scope }),
+  })
+  const bearer = async (secret: string, scope: string) => z.object({ access_token: z.string() }).parse(await (await ask(secret, scope)).json()).access_token
+  const group = (access: string) => fetch(`${manifest.idOrigin}/api/admin/v1/organizations/${platform}/groups`, {
+    method: "POST", headers: { Authorization: `Bearer ${access}`, "Idempotency-Key": crypto.randomUUID(), "Content-Type": "application/json" }, body: JSON.stringify({ slug: "never-made", name: "Never made" }),
+  })
+
+  step("An earlier release's run: toolbox-hub with platform:read and platform:write on ID's admin API, and a write token issued to it")
+  const first = createRegistrar(call)
+  const held = await first.client("toolbox-hub-v1", declaration(["platform:read", "platform:write"]))
+  await first.link("toolbox-hub-link-v1", "toolbox-hub", manifest.adminResource, held)
+  await first.capability(platform, "toolbox-hub-capability-v1", capability(["platform:read", "platform:write"]))
+  const secret = z.string().parse(held.created?.clientSecret)
+  const before = await bearer(secret, "platform:read platform:write")
+
+  step("This release's run, exact: the ceiling, then the capability, narrowed with If-Match under <key>-r<revision>; the run after finds both")
+  const second = createRegistrar(call)
+  const again = await second.client("toolbox-hub-v1", declaration(["platform:read"]), { exact: true })
+  await second.link("toolbox-hub-link-v1", "toolbox-hub", manifest.adminResource, again)
+  await second.capability(platform, "toolbox-hub-capability-v1", capability(["platform:read"]), { exact: true })
+  expect(second.tally).toMatchObject({ made: 0, changed: 2 })
+  expect((await asClient("GET", "/clients/toolbox-hub")).body).toMatchObject({ clientCredentialsScopes: ["platform:read"] })
+  const { items } = z.object({ items: z.array(z.object({ clientId: z.string().nullable(), resource: z.string().nullable(), scopes: z.array(z.string()) })) }).parse((await asClient("GET", `/organizations/${platform}/capabilities?limit=200`)).body)
+  expect(items.find(item => item.clientId === "toolbox-hub" && item.resource === manifest.adminResource)!.scopes).toEqual(["platform:read"])
+  const third = createRegistrar(call)
+  await third.client("toolbox-hub-v1", declaration(["platform:read"]), { exact: true })
+  await third.capability(platform, "toolbox-hub-capability-v1", capability(["platform:read"]), { exact: true })
+  expect(third.tally).toMatchObject({ made: 0, changed: 0, found: 2 })
+
+  step("What the Toolbox's code can do with it now: read, and nothing else")
+  expect((await ask(secret, "platform:read platform:write")).status).toBe(400)
+  const reads = await fetch(`${manifest.idOrigin}/api/admin/v1/organizations/${platform}`, { headers: { Authorization: `Bearer ${await bearer(secret, "platform:read")}` } })
+  expect(reads.status).toBe(200)
+  const stale = await group(before)
+  step(`The write token issued before the narrowing: ${stale.status}`)
+  expect([401, 403]).toContain(stale.status)
+})

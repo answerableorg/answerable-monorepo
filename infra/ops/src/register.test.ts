@@ -52,7 +52,7 @@ describe("register's own machine client", () => {
     expect(id.clientOf("ops-register")).toMatchObject({ organizationId: id.platform, tokenEndpointAuthMethod: "client_secret_basic", grantTypes: ["client_credentials"], clientCredentialsScopes: ["platform:read", "platform:write"], resources: [admin] })
     expect(id.capabilities(id.platform).filter(row => row.grantKind === "client_credentials").map(row => [row.clientId, row.resource, row.scopes])).toEqual([
       ["ops-register", admin, ["platform:read", "platform:write"]],
-      ["toolbox-hub", admin, ["platform:read", "platform:write"]],
+      ["toolbox-hub", admin, ["platform:read"]],
       ["admin-mcp", admin, ["platform:read", "platform:users", "platform:write"]],
       ["admin-mcp", "https://toolbox.example/admin", ["toolbox:admin"]],
     ])
@@ -148,6 +148,67 @@ describe("register's own machine client", () => {
   })
 })
 
+describe("the Toolbox's machine client holds platform:read alone", () => {
+  const hub = (id: FakeId) => ({ client: id.clientOf("toolbox-hub")!, capability: id.capabilities(id.platform).find(row => row.clientId === "toolbox-hub")! })
+  // The token endpoint, as the Toolbox's code meets it.
+  const asks = async (id: FakeId, scope: string) => (await id.fetch("https://id.example/auth/oauth2/token", {
+    method: "POST", headers: { Authorization: `Basic ${Buffer.from(`toolbox-hub:${id.clientOf("toolbox-hub")!.secret}`).toString("base64")}` },
+    body: new URLSearchParams({ grant_type: "client_credentials", resource: admin, scope }),
+  })).status
+
+  test("a new environment: its ceiling and its capability on ID's admin API are platform:read exactly, so ID issues it no write token", async () => {
+    const { id, run } = setup()
+    await run()
+    expect(hub(id).client.clientCredentialsScopes).toEqual(["platform:read"])
+    expect(hub(id).capability).toMatchObject({ resource: admin, grantKind: "client_credentials", scopes: ["platform:read"], status: "active" })
+    expect(await asks(id, "platform:read")).toBe(200)
+    expect(await asks(id, "platform:read platform:write")).toBe(400)
+  })
+
+  test("an environment registered when it also held platform:write: the next run narrows its ceiling, then its capability, each with If-Match under <key>-r<revision>, and the run after finds both", async () => {
+    const { id, run, printed, lines } = setup()
+    await run()
+    // As a register of an earlier release left it.
+    Object.assign(hub(id).capability, { scopes: ["platform:read", "platform:write"] })
+    const widened = await id.fetch("https://id.example/api/admin/v1/clients/toolbox-hub", {
+      method: "PATCH", headers: { Authorization: `Bearer ${id.rootSecret}`, "Idempotency-Key": crypto.randomUUID(), "Content-Type": "application/json" },
+      body: JSON.stringify({ clientCredentialsScopes: ["platform:read", "platform:write"] }),
+    })
+    expect(widened.status).toBe(200)
+    expect(await asks(id, "platform:read platform:write")).toBe(200)
+    const { client, capability } = hub(id)
+    const [clientRevision, capabilityRevision] = [client.revision as number, capability.revision as number]
+    const from = id.calls().length
+    lines.length = 0
+    await run({ rootSecret: undefined })
+    expect(id.calls().slice(from).filter(call => call.method === "PATCH").map(call => [call.path, call.key, call.ifMatch, call.caller])).toEqual([
+      ["/clients/toolbox-hub", `toolbox-hub-v1-r${clientRevision}`, `"${client.id}:${clientRevision}"`, "ops-register"],
+      [`/organizations/${id.platform}/capabilities/${capability.id}`, `toolbox-hub-capability-v1-r${capabilityRevision}`, `"${capability.id}:${capabilityRevision}"`, "ops-register"],
+    ])
+    expect(hub(id).client.clientCredentialsScopes).toEqual(["platform:read"])
+    expect(hub(id).capability.scopes).toEqual(["platform:read"])
+    expect(await asks(id, "platform:read platform:write")).toBe(400)
+    expect(await asks(id, "platform:read")).toBe(200)
+    expect(printed()).toContain("toolbox-hub-v1: changed clientCredentialsScopes")
+    expect(printed()).toContain("toolbox-hub-capability-v1: changed scopes")
+    expect(printed()).toContain(` s: 0 created, 2 changed, ${keys.length - 2} as declared already`)
+    const again = id.calls().length
+    await run({ rootSecret: undefined })
+    expect(id.calls().slice(again).filter(call => call.method === "PATCH")).toEqual([])
+  })
+
+  test("the narrowing is toolbox-hub's alone: the other machine clients keep a scope they hold beyond their declaration", async () => {
+    const { id, run } = setup()
+    await run()
+    const extra = (clientId: string) => id.capabilities(id.platform).find(row => row.clientId === clientId && row.resource === admin)!
+    for (const clientId of ["ops-register", "admin-mcp"]) extra(clientId).scopes.push("platform:extra")
+    const from = id.calls().length
+    await run({ rootSecret: undefined })
+    expect(id.calls().slice(from).filter(call => call.method === "PATCH")).toEqual([])
+    for (const clientId of ["ops-register", "admin-mcp"]) expect(extra(clientId).scopes, clientId).toContain("platform:extra")
+  })
+})
+
 describe("the admin MCP's machine client and platform:users", () => {
   const ceiling = ["platform:read", "platform:users", "platform:write", "toolbox:admin"]
   const capabilityOf = (id: FakeId, target = admin) => id.capabilities(id.platform).find(row => row.clientId === "admin-mcp" && row.resource === target)!
@@ -176,7 +237,7 @@ describe("the admin MCP's machine client and platform:users", () => {
     expect(await asks(id, "platform:read platform:users")).toBe(200)
     expect(await asks(id, "platform:read platform:write")).toBe(200)
     // The Toolbox's client is not given it.
-    expect(id.capabilities(id.platform).find(row => row.clientId === "toolbox-hub")!.scopes).toEqual(["platform:read", "platform:write"])
+    expect(id.capabilities(id.platform).find(row => row.clientId === "toolbox-hub")!.scopes).toEqual(["platform:read"])
   })
 
   test("an environment registered before it: the next run widens the client's ceiling and the capability with If-Match under <key>-r<revision>, changes nothing else, and the run after finds both as declared", async () => {

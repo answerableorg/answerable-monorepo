@@ -61,7 +61,8 @@ const roles = ["team", "admin", "owner"] as const
  * under `<key>-r<revision>`, in the fields that differ. Scopes and redirect URIs only widen: the Toolbox's resource gains the grant strings of an MCP
  * its hub serves on the deploy that ships it and keeps those it holds, and a capability gains a scope declared since it was made (the admin MCP's
  * `platform:users`). An MCP's own resource follows its manifest, and a scope the
- * manifest dropped is logged as it goes. An MCP removed from the list keeps its rows.
+ * manifest dropped is logged as it goes. One machine client is narrowed too: `toolbox-hub`, which every MCP's code shares a process with, holds
+ * exactly `platform:read`, its ceiling first, then its capability. An MCP removed from the list keeps its rows.
  * Links are made under `<key>-r<revision>` of the client when its read lacks them; entitlements and groups are created when missing.
  * Each machine client's secret is stored the moment ID answers it, and one that exists while its secret is not stored is rotated. With `staff`,
  * then connects the staff domain and directory (see {@link connectStaff}). Prints the Claude Code commands and the first owner's step; never a secret.
@@ -89,12 +90,13 @@ export async function register({ id, rootSecret, toolbox, adminMcp, mcpOrigin, m
 
   /**
    * A machine client of the platform organisation with, on each audience, its link and its capability: its secret stored from the creation's
-   * answer, or rotated when it exists unstored.
+   * answer, or rotated when it exists unstored. With `exact`, its ceiling and each capability are set to exactly what is declared, narrowing too,
+   * with `If-Match` on what register read: only `toolbox-hub` is registered so, by name (see {@link register}).
    */
-  async function machine(clientId: Machine, audiences: [string, string, string[]][]) {
+  async function machine(clientId: Machine, audiences: [string, string, string[]][], { exact = false } = {}) {
     const ref = clientSecrets[clientId]
     const scopes = [...new Set(audiences.flatMap(([, , granted]) => granted))]
-    const held = await registrar.client(`${clientId}-v1`, { clientId, name: clientNames[clientId], organizationId: platform, tokenEndpointAuthMethod: "client_secret_basic", grantTypes: ["client_credentials"], clientCredentialsScopes: scopes })
+    const held = await registrar.client(`${clientId}-v1`, { clientId, name: clientNames[clientId], organizationId: platform, tokenEndpointAuthMethod: "client_secret_basic", grantTypes: ["client_credentials"], clientCredentialsScopes: scopes }, { exact })
     if (typeof held.created?.clientSecret === "string") {
       await store.put(ref, held.created.clientSecret)
       log(`${clientId}: secret stored in ${ref.secret}/${ref.key}`)
@@ -105,11 +107,11 @@ export async function register({ id, rootSecret, toolbox, adminMcp, mcpOrigin, m
     }
     for (const [suffix, audience, granted] of audiences) {
       await link(`${clientId}-link${suffix}-v1`, clientId, audience, held)
-      await capability(`${clientId}-capability${suffix}-v1`, clientId, audience, "client_credentials", granted)
+      await capability(`${clientId}-capability${suffix}-v1`, clientId, audience, "client_credentials", granted, exact)
     }
   }
-  const capability = (key: string, clientId: string, resource: string | null, grantKind: string, scopes: string[]) =>
-    registrar.capability(platform, key, { clientId, resource, grantKind, scopes })
+  const capability = (key: string, clientId: string, resource: string | null, grantKind: string, scopes: string[], exact = false) =>
+    registrar.capability(platform, key, { clientId, resource, grantKind, scopes }, { exact })
   const entitlement = (key: string, body: Record<string, unknown>) => write("POST", `/organizations/${platform}/entitlements`, key, body, { create: true })
 
   const platform = await platformOrganisation(call)
@@ -121,12 +123,13 @@ export async function register({ id, rootSecret, toolbox, adminMcp, mcpOrigin, m
     log("ops-register is minted: register goes on as its own machine client, and needs no root secret again")
   }
 
-  // The Toolbox: its resource and admin resource, its machine client on ID's admin API, which also reads who is calling for the MCPs it serves
-  // alone, and Claude Code as its host client. The first enable call that names the host client links it and approves it for the organisation
-  // (docs/toolbox/admin).
+  // The Toolbox: its resource and admin resource, its machine client on ID's admin API, which reads grants and who is calling for every MCP it
+  // serves, and Claude Code as its host client. The first toolbox_enable that names the host client links it and approves it for the organisation
+  // (docs/toolbox/admin). Every MCP's code runs in the Toolbox's process and can mint toolbox-hub's token, so it holds platform:read alone, set
+  // exactly: a deployment registered when it also held platform:write is narrowed. No other row is ever narrowed.
   const toolboxed = toolboxRows(toolbox, callback, toolboxScopes)
   for (const [key, fields] of toolboxed.resources) await registrar.resource(key, fields)
-  await machine("toolbox-hub", [["", admin, ["platform:read", "platform:write"]]])
+  await machine("toolbox-hub", [["", admin, ["platform:read"]]], { exact: true })
   await registrar.client(...toolboxed.host)
 
   // The admin MCP: its resource, Claude Code as its host client with the platform organisation's access, a group per role, and its machine

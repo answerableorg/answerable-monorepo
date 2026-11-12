@@ -251,7 +251,7 @@
       {
         "name": "TOOLBOX_ID_CLIENT_ID",
         "secret": false,
-        "doc": "The Toolbox's machine client in ID, toolbox-hub, with platform:read and platform:write, registered as the Toolbox's docs show",
+        "doc": "The Toolbox's machine client in ID, toolbox-hub, with platform:read alone, registered as the Toolbox's docs show",
         "source": "chart",
         "optional": false
       },

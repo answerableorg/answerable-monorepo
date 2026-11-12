@@ -29,7 +29,7 @@ export type HostClient = { clientId: string; redirectUri: string }
 
 /**
  * The Toolbox's process as its entry point builds it, for a journey that serves it at one origin or more: its machine client `toolbox-hub` in the
- * platform organisation of a started ID (`platform:read platform:write`, the HTTP client `fetch`), its database `database` on the acceptance's
+ * platform organisation of a started ID (`platform:read` alone, as the register Job gives it; the HTTP client `fetch`), its database `database` on the acceptance's
  * PostgreSQL (migrated as the owner, served as the runtime login, as `db:migrate` and the entry point do), and the shared MCP database's serving
  * login, checked. `start(origin)` builds a Toolbox on fresh pools whose hub is `<origin>/mcp` and whose MCPs served alone, `standalone` or `both` in
  * its generated list, are `<origin>/<name>/mcp`, with its audit-log poller dropping its grants and profiles; the caller serves its `fetch`, and
@@ -40,7 +40,7 @@ export async function prepareToolbox(id: Id, { database, fetch }: { database: st
   step("Registering the Toolbox's machine client in the platform organisation")
   const organisations = z.object({ items: z.array(z.object({ id: z.uuid(), slug: z.string() })) }).parse(await admin("GET", "/organizations?q=answerable"))
   const platform = organisations.items.find(organisation => organisation.slug === "answerable")!
-  const hub = await registerMachine(admin, platform.id, "toolbox-hub", { [manifest.adminResource]: ["platform:read", "platform:write"] })
+  const hub = await registerMachine(admin, platform.id, "toolbox-hub", { [manifest.adminResource]: ["platform:read"] })
   const machine = createIdAdmin({ issuer: manifest.idOrigin, adminResource: manifest.adminResource, ...hub, fetch })
 
   step(`Creating and migrating ${database}, to serve ${mounted.map(({ provider }) => provider.id).join(" and ")} as the Toolbox's runtime logins`)

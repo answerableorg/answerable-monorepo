@@ -91,8 +91,11 @@ export function createRegistrar(call: Call, log: (line: string) => void = () => 
       if (dropped.length) log(`${fields.identifier}: its manifest no longer declares ${dropped.join(" ")}, so its resource stops allowing ${dropped.length === 1 ? "it" : "them"}`)
       await update(path, key, held, { name: fields.name, accessTokenTtl: fields.accessTokenTtl, allowedScopes: sorted(own ? fields.allowedScopes : [...holds, ...fields.allowedScopes]) })
     },
-    /** A client as declared: created when ID has none, else its name, redirect URIs and scopes changed where they differ, the lists keeping what it holds. */
-    async client(key: string, fields: ClientFields): Promise<Held> {
+    /**
+     * A client as declared: created when ID has none, else its name, redirect URIs and scopes changed where they differ, the lists keeping what it
+     * holds; with `exact`, its `clientCredentialsScopes` become exactly those declared, narrowing too.
+     */
+    async client(key: string, fields: ClientFields, { exact = false } = {}): Promise<Held> {
       const path = `/clients/${fields.clientId}`
       const held = await read(path)
       if (!held) {
@@ -100,24 +103,25 @@ export function createRegistrar(call: Call, log: (line: string) => void = () => 
         return { created, revision: typeof created.revision === "number" ? created.revision : 1, resources: [] }
       }
       const widened = (field: "redirectUris" | "scopes" | "clientCredentialsScopes") => fields[field] && sorted([...((held.body[field] as string[] | null) ?? []), ...fields[field]])
-      const revision = await update(path, key, held, { name: fields.name, redirectUris: widened("redirectUris"), scopes: widened("scopes"), clientCredentialsScopes: widened("clientCredentialsScopes") })
+      const ceiling = exact ? fields.clientCredentialsScopes && sorted(fields.clientCredentialsScopes) : widened("clientCredentialsScopes")
+      const revision = await update(path, key, held, { name: fields.name, redirectUris: widened("redirectUris"), scopes: widened("scopes"), clientCredentialsScopes: ceiling })
       return { revision, resources: held.body.resources as string[] }
     },
     /**
      * An organisation's capability as declared: created under `key` when the organisation holds none for this client, resource and grant kind; else its
      * scopes widened by what it lacks, never narrowed, with `If-Match` under `<key>-r<revision>`, so that a deployment registered before a scope
-     * existed gains it. ID's list takes no filter, so every page is read.
+     * existed gains it; with `exact`, its scopes become exactly those declared, narrowing too. ID's list takes no filter, so every page is read.
      */
-    async capability(organizationId: string, key: string, { clientId, resource, grantKind, scopes }: CapabilityFields) {
+    async capability(organizationId: string, key: string, { clientId, resource, grantKind, scopes }: CapabilityFields, { exact = false } = {}) {
       const path = `/organizations/${organizationId}/capabilities`
       const held = (await listAll<{ id: string; clientId: string | null; resource: string | null; grantKind: string; scopes: string[] }>(call, path))
         .find(row => row.clientId === clientId && row.resource === resource && row.grantKind === grantKind)
       if (!held) return void (await write("POST", path, key, { clientId, resource, grantKind, scopes }, { create: true }))
-      if (scopes.every(scope => held.scopes.includes(scope))) return void tally.found++
+      if (scopes.every(scope => held.scopes.includes(scope)) && (!exact || held.scopes.every(scope => scopes.includes(scope)))) return void tally.found++
       const row = `${path}/${held.id}`
       const current = await call("GET", row)
       if (!current.ok) throw failure("GET", row, current)
-      await update(row, key, current, { scopes: sorted([...(current.body.scopes as string[]), ...scopes]) })
+      await update(row, key, current, { scopes: sorted(exact ? scopes : [...(current.body.scopes as string[]), ...scopes]) })
     },
     /** A client's link to a resource, when the client's read lacked it, under `<key>-r<revision>` of the client, which a link changes. */
     async link(key: string, clientId: string, target: string, held: Held) {
