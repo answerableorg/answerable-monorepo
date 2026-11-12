@@ -83,7 +83,7 @@ kubectl -n answerable exec deploy/id -c id -- bun -e 'const sql = new Bun.SQL({ 
 
 PostgreSQL's lock table holds `max_locks_per_transaction` × (`max_connections` + `max_prepared_transactions`) locks for all transactions together ([the documentation](https://www.postgresql.org/docs/17/runtime-config-locks.html)): write both numbers in [`reports/staging-evidence.md`](../reports/staging-evidence.md), and if one import of 1,000 would not fit with the others' locks, say so before the first firm is imported. Not yet read.
 
-**Production differs in three places.** The environment is `production`, which already exists as Vercel's `Production` (names ignore case): set its policy and reviewer as in [Who can ship to production](#who-can-ship-to-production) and run that table before you paste a secret; its first ship is a tag `production/<name>` on a commit staging has shipped; the Entra redirect URIs are production's.
+**Production differs in three places.** The environment is `production`, which already exists as Vercel's `Production` (names ignore case): set its policy and reviewer as in [Who can ship to production](#who-can-ship-to-production) and run that table before you paste a secret; its first ship is a tag `production/<name>` on a commit staging has shipped, once [Before the first production tag](#before-the-first-production-tag) holds; the Entra redirect URIs are production's.
 
 ## Send mail through Postmark
 
@@ -189,6 +189,23 @@ What to check when a new MCP ships:
 Then tag `production/<name>` on the same commit. A failed migration fails the deploy and rolls the release back, as any migration does; each MCP migrates in one transaction, so the one that failed is left as it was, and those before it keep their migrations, which the previous image tolerates (expand, then contract).
 
 An MCP removed from `mcps/` keeps its schema, roles, own database and Secrets, and its resource, client and link in ID: its name goes into `mcps/retired.json`, and removing what it left is Not yet automated.
+
+## Before the first production tag
+
+What must be true before the first `production/*` tag, each with its proof. None of it is true on 12 November 2026; tick nothing here without the proof.
+
+| Must be true | Proof |
+| --- | --- |
+| GitHub decides who ships: the production environment's policy and reviewer, the tag and `main` rulesets, SHA pinning ([`Q-PRODUCTION-APPROVAL`](../docs/02-plan.md#open-register)) | Every line of [Who can ship to production](#who-can-ship-to-production) answers as it says |
+| Production's secrets were pasted only after that | `gh api repos/answerableorg/answerable-monorepo/environments/production/secrets --jq '[.secrets[] \| {name, created_at}]'`: the seven pasted names, each created after the table passed |
+| The production overlay names Answerable's staff directory ([`Q-PRODUCTION-STAFF-DIRECTORY`](../docs/02-plan.md#open-register)) | `grep -n -e staffDomain -e entraTenant charts/answerable/values-civo-production.yaml` shows both, with the owner's values |
+| The commit to promote was signed by a staging run that passed its smoke test | `gh run list --workflow deploy-staging.yml --commit <commit> --status success`; that run has the job `Sign the images staging ran` |
+| DMARC rejects mail that is not Postmark's, and CAA names the zone's authorities | `dig +short TXT _dmarc.id.answerable.org` and `dig +short CAA answerable.org`, as in [Send mail through Postmark](#send-mail-through-postmark), step 3 |
+| Real mail reaches a real mailbox: the production Postmark server is Live, its domain verified and approved to send to anyone ([`Q-MAGIC-STAGING-PROOF`](../docs/02-plan.md#open-register)) | The hand proof on staging (W10 of [the magic links plan](../docs/goals/magic-links/task_plan.md)) and Postmark's domain page for `id.answerable.org`, dated in [`reports/staging-evidence.md`](../reports/staging-evidence.md) |
+| The database's `max_connections` and `max_locks_per_transaction` are read and fit ([`Q-CIVO-MAX-CONNECTIONS`](../docs/02-plan.md#open-register), [`Q-MAGIC-CIVO-LOCKS`](../docs/02-plan.md#open-register)) | [First run](#first-run), step 8's command, its two numbers in `reports/staging-evidence.md` |
+| A restore works, with its RTO and RPO measured ([`Q-RESTORE-DRILL`](../docs/02-plan.md#open-register)) | The drill in `reports/staging-evidence.md`, and [Restore](#restore) rewritten from it |
+| Someone is paged when production stops answering ([`Q-ALERTING`](../docs/02-plan.md#open-register)) | The uptime check of `https://id.answerable.org/readyz` and `/login` the owner chose, and one test page received |
+| The release checklist's production rows hold | Rows E1 to E7 of [`reports/answerable-id-release-decision-plan.md`](../reports/answerable-id-release-decision-plan.md), each with its evidence; none has any yet |
 
 ## Promote to production
 
