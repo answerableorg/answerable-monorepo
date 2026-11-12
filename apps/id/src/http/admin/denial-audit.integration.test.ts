@@ -130,6 +130,45 @@ for (const kind of ["scope", "foreign", "locked-root", "machine"] as const) {
   });
 }
 
+test("a signed-in person with no admin grant is refused with a log line, not an audit row", async () => {
+  const before = await fixture.deniedEvents();
+  const path = `/api/admin/v1/organizations/${crypto.randomUUID()}/members`;
+  const messages: unknown[][] = [];
+  const logging = spyOn(console, "error").mockImplementation((...args) => {
+    messages.push(args);
+  });
+  let response: Response;
+  try {
+    response = await app.request(path, {
+      headers: fixture.headers("noGrant"),
+    });
+  } finally {
+    logging.mockRestore();
+  }
+  expect(response.status).toBe(404);
+  expect(await response.json()).toMatchObject({ code: "not_found" });
+  expect(await fixture.deniedEvents()).toEqual(before);
+  expect(messages).toEqual([
+    [
+      "[id] admin",
+      JSON.stringify({
+        level: "error",
+        event: "admin_denied",
+        requestId: response.headers.get("x-request-id"),
+        ip: "127.0.0.1",
+        operationId: "listMembers",
+        reason: "not_found",
+      }),
+    ],
+  ]);
+  // A principal that holds a grant still leaves a row for the same refusal.
+  const granted = await app.request(path, {
+    headers: fixture.headers("tenantAdmin"),
+  });
+  expect(granted.status).toBe(404);
+  expect(await fixture.deniedEvents()).toHaveLength(before.length + 1);
+});
+
 test("successful root admission still requires its audit and same-key recovery commits once", async () => {
   const before = await fixture.db.select().from(organizations);
   const operations = await fixture.db.select().from(adminOperations);

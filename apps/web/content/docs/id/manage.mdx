@@ -131,7 +131,7 @@ curl "https://id.answerable.org/api/admin/v1/organizations/$ORGANIZATION_ID/audi
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**Filters.** Use `actorId`, `action`, `targetType`, `targetId` and `outcome` (`success`, `failure`, `denied`). Refused SSO callbacks are log lines, not events.
+**Filters.** Use `actorId`, `action`, `targetType`, `targetId` and `outcome` (`success`, `failure`, `denied`). Refused SSO callbacks are log lines, not events, and so is an admin API refusal for a signed-in person who holds no admin grant: ID logs `[id] admin` with event `admin_denied`, holding the request ID, the client address, the operation and the reason.
 
 **Time filter.** `from` accepts a UTC timestamp. The response contains only your organisation's events.
 

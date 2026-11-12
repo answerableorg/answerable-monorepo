@@ -85,7 +85,7 @@ Soft-deleted entitlements, group assignments and memberships have one evidence s
 | Action | `data` |
 | ------ | ------ |
 | `admin.auth_failed` | Null. Written only once the credential verified: a disabled user, an untrusted or missing `Origin`, a client without an organisation, a disabled organisation. A missing or invalid credential writes no event, only the log line `admin_auth_refused` (request id, address, path, reason). |
-| `admin.denied` | `organizationId` when the path names an organisation the principal holds no grant for, otherwise null. |
+| `admin.denied` | `organizationId` when the path names an organisation the principal holds no grant for, otherwise null. Written for a client, root or a person holding at least one admin grant. A signed-in person with no grant writes no event, only the log line `admin_denied` (request id, address, operation, reason). |
 | `admin.root_request` | `organizationId` from the path, otherwise null. |
 | `auth.magic_link.code_exhausted`, `auth.magic_link.refused` | `magicLinkRequestId`, `authenticationProviderId`, `authenticationProviderRevision`. The actor is the system `magic-link`, the target the person when the address has one and otherwise the request, and `reason` says why: `code_attempts` for the first; `access_removed`, `not_admitted`, `provider_changed`, `ended`, `token_consumed` or `account_conflict` for the second, and on a directory's connection `directory_changed`, `not_connectable`, `identity_taken` or `ended`, where the provider fields name the directory's row. Each needs the browser's real cookie and a real row, and one request writes one. |
 | `auth.signin.succeeded` | `userId`, `authenticationAccountId`, `authenticationProviderId`, `authenticationProviderRevision`, `upstreamAuthTime`. |

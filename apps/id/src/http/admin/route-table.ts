@@ -5,6 +5,7 @@ import { actorFromContext } from "../../services/actor.ts";
 import { AuthorityDenied } from "../../services/command-authority.ts";
 import type { AppEnvironment } from "../context.ts";
 import { recordAdministrativeDenial } from "../denial-audit.ts";
+import { logEvent } from "../../lib/log.ts";
 import { adminRoute } from "./openapi.ts";
 import type { AdminScope } from "./scopes.ts";
 
@@ -51,28 +52,42 @@ function admitRoot(): MiddlewareHandler<AppEnvironment> {
   };
 }
 
-/** `admin.denied` for a refusal by current authority, on the pool: the command's transaction has rolled back. */
+/**
+ * `admin.denied` for a refusal by current authority, on the pool: the command's transaction has
+ * rolled back. A signed-in person with no grant gets a log line instead: any member of any firm
+ * can sign in, holds no admin authority to misuse, and must not be able to fill the insert-only
+ * audit table, as an unverified credential cannot (principal.ts).
+ */
 async function recordDenial(
   context: Context<AppEnvironment>,
   denied: AuthorityDenied,
 ) {
   const principal = context.get("principal")!;
-  // The path value is untrusted and the column is a foreign key: only an
-  // organisation the principal holds a grant for is attributed by id.
-  const organizationId = context.req.param("organizationId");
-  const known =
-    organizationId !== undefined &&
-    principal.grants.some((grant) => grant.organizationId === organizationId);
-  await recordAdministrativeDenial(context.get("db"), {
-    ...actorFromContext(context),
-    organizationId: known ? organizationId : undefined,
-    data:
-      organizationId !== undefined && !known ? { organizationId } : undefined,
-    action: "admin.denied",
-    targetType: "route",
-    targetId: context.get("operationId"),
-    reason: denied.code,
-  });
+  if (principal.type === "user" && principal.grants.length === 0) {
+    logEvent("admin", "admin_denied", {
+      requestId: context.get("requestId"),
+      ip: context.get("clientIp"),
+      operationId: context.get("operationId"),
+      reason: denied.code,
+    });
+  } else {
+    // The path value is untrusted and the column is a foreign key: only an
+    // organisation the principal holds a grant for is attributed by id.
+    const organizationId = context.req.param("organizationId");
+    const known =
+      organizationId !== undefined &&
+      principal.grants.some((grant) => grant.organizationId === organizationId);
+    await recordAdministrativeDenial(context.get("db"), {
+      ...actorFromContext(context),
+      organizationId: known ? organizationId : undefined,
+      data:
+        organizationId !== undefined && !known ? { organizationId } : undefined,
+      action: "admin.denied",
+      targetType: "route",
+      targetId: context.get("operationId"),
+      reason: denied.code,
+    });
+  }
   if (principal.type === "client" && denied.status === 403)
     context.header("WWW-Authenticate", 'Bearer error="insufficient_scope"');
 }
