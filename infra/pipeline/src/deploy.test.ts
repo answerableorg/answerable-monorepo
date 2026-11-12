@@ -247,6 +247,24 @@ describe("the signature production checks", () => {
   })
 })
 
+describe("the cloud tokens", () => {
+  test("reach the Terraform steps of both shipping workflows only, never a job's environment", async () => {
+    const tokens = ["CIVO_TOKEN", "CLOUDFLARE_API_TOKEN", "STATE_ACCESS_KEY_ID", "STATE_SECRET_ACCESS_KEY", "GITHUB_TOKEN"]
+    for (const workflow of ["deploy-staging.yml", "promote-production.yml"]) {
+      const { jobs } = Bun.YAML.parse(await Bun.file(new URL(`../../../.github/workflows/${workflow}`, import.meta.url)).text()) as {
+        jobs: Record<string, { env?: Record<string, string>; steps?: { run?: string; env?: Record<string, string> }[] }>
+      }
+      for (const [name, job] of Object.entries(jobs)) {
+        for (const token of tokens) expect(job.env?.[token], `${workflow}: ${name}`).toBeUndefined()
+        for (const step of job.steps ?? [])
+          if (tokens.some((token) => step.env?.[token] !== undefined)) expect(step.run, `${workflow}: ${name}`).toStartWith("infra/civo/terraform.sh ")
+      }
+      const terraform = Object.values(jobs).flatMap((job) => job.steps ?? []).filter((step) => step.run?.startsWith("infra/civo/terraform.sh "))
+      expect(terraform.map((step) => step.env?.CIVO_TOKEN), workflow).toEqual([undefined, "${{ secrets.CIVO_TOKEN }}", "${{ secrets.CIVO_TOKEN }}"])
+    }
+  })
+})
+
 describe("registryLogin", () => {
   test("holds the token as Docker and the kubelet read it, under the registry's host", () => {
     const { auths } = JSON.parse(registryLogin(ENV)) as { auths: Record<string, { username: string; password: string; auth: string }> }

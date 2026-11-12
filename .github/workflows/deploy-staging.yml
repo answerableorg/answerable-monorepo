@@ -65,7 +65,8 @@ jobs:
   # Staging's infrastructure, before every deploy, so that the code that ships is what runs. A no-op when nothing
   # changed. The first apply creates the cluster and the database before anything that runs inside the cluster, then
   # applies the rest; both steps are no-ops afterwards. Terraform also writes the deploy credentials into this
-  # environment (KUBE_SERVER, KUBE_CA, KUBE_TOKEN), which the deploy job reads when it starts.
+  # environment (KUBE_SERVER, KUBE_CA, KUBE_TOKEN), which the deploy job reads when it starts. The Civo, Cloudflare and
+  # GitHub tokens reach the Terraform steps only, as in promote-production.yml.
   infra:
     name: Apply the staging infrastructure
     needs: ci
@@ -74,14 +75,6 @@ jobs:
     environment: staging
     permissions:
       contents: read
-    env:
-      TF_IN_AUTOMATION: "1"
-      CIVO_TOKEN: ${{ secrets.CIVO_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      STATE_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY_ID }}
-      STATE_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_ACCESS_KEY }}
-      # The github provider: the environment's own policies and the three deploy secrets.
-      GITHUB_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,12 +85,31 @@ jobs:
           tools: terraform
 
       - name: Terraform init
+        env:
+          TF_IN_AUTOMATION: "1"
+          STATE_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY_ID }}
+          STATE_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_ACCESS_KEY }}
         run: infra/civo/terraform.sh staging init -input=false
 
       - name: Terraform apply, the cluster and the database first
+        env:
+          TF_IN_AUTOMATION: "1"
+          CIVO_TOKEN: ${{ secrets.CIVO_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          STATE_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY_ID }}
+          STATE_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_ACCESS_KEY }}
+          # The github provider: the three deploy secrets.
+          GITHUB_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
         run: infra/civo/terraform.sh staging apply -input=false -auto-approve -target=module.cluster -target=module.database -target=module.ingress_firewall
 
       - name: Terraform apply
+        env:
+          TF_IN_AUTOMATION: "1"
+          CIVO_TOKEN: ${{ secrets.CIVO_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          STATE_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY_ID }}
+          STATE_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_ACCESS_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
         run: infra/civo/terraform.sh staging apply -input=false -auto-approve
 
   # One build per image of infra/pipeline/images.json, for linux/amd64, pushed as sha-<commit>. Unsigned: the sign job
