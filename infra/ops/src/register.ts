@@ -2,6 +2,7 @@ import type { DeclaredMcp } from "@answerable/mcp-postgres"
 import { adminApi, type Call, clientToken, failure, findBySlug, platformOrganisation } from "./admin-api"
 import { createRegistrar, hostClient, hostGrants, registerStandalone, signIn, toolboxRows } from "./registrar"
 import type { SecretRef, SecretStore } from "./secret-store"
+import { toolboxScopes } from "./toolbox-scopes.generated"
 
 type Options = {
   /** Answerable ID's origin: its issuer and its admin API's base. */
@@ -123,7 +124,7 @@ export async function register({ id, rootSecret, toolbox, adminMcp, mcpOrigin, m
   // The Toolbox: its resource and admin resource, its machine client on ID's admin API, which also reads who is calling for the MCPs it serves
   // alone, and Claude Code as its host client. The first enable call that names the host client links it and approves it for the organisation
   // (docs/toolbox/admin).
-  const toolboxed = toolboxRows(toolbox, callback)
+  const toolboxed = toolboxRows(toolbox, callback, toolboxScopes)
   for (const [key, fields] of toolboxed.resources) await registrar.resource(key, fields)
   await machine("toolbox-hub", [["", admin, ["platform:read", "platform:write"]]])
   await registrar.client(...toolboxed.host)

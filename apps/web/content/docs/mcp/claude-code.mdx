@@ -92,7 +92,7 @@ For Answerable staff: [the admin MCP](/docs/admin) onboards and manages organisa
 | --- | --- | --- |
 | "Access is unavailable for this organisation" | The organisation lacks a login capability or entitlement for the client, or a capability or entitlement for the server (a partial entitlement is fine: ID issues the entitled subset) | Locally, `bun mcp dev <mcp>` gives your organisation access. In a deployment, staff run `toolbox_enable` or `standalone_enable` in [the admin MCP](/docs/admin) |
 | `invalid_redirect` | The callback port differs from the registered redirect URI | Use `--callback-port 47700`, or register the port you use |
-| `invalid_target` | The resource is unknown, not linked to the client, or written differently | Use the exact registered URL and link it; the enable call links the Toolbox's host client |
+| `invalid_target` | The resource is unknown, not linked to the client, or written differently | Use the exact registered URL and link it; `toolbox_enable` links the Toolbox's host client |
 | `invalid_client` | The client ID is unknown or disabled | Check `claude mcp get answerable-toolbox` (or `answerable-e2e`) against the registration |
 | `claude mcp login`: `stdin isn't a terminal, so authentication can't be completed here` | It needs a terminal to read the redirect | Run it in an interactive terminal (`ssh -t` for a remote machine) |
 | `401` after signing in | The server's issuer or resource differs from ID's | Set `TOOLBOX_ID_ISSUER` and `TOOLBOX_RESOURCE_URL`, or `TOOLBOX_STANDALONE_ORIGIN` for an MCP served alone, to ID's origin and the registered URL's |

@@ -306,40 +306,123 @@ test("access_revoke disables an entitlement, reversibly, naming who loses what, 
   expect(await refusal("access_revoke", { organizationId: newco.id, entitlementId: crypto.randomUUID() })).toMatchObject({ code: "NOT_FOUND" })
 })
 
-test("toolbox_enable reads the Toolbox's providers and catalogue, posts the enable operation with a token for the Toolbox's admin resource, and is safe to repeat", async () => {
-  const { id, toolbox, world: { newco }, prepare, refusal, committed } = await setup()
-  const intent = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: ["claude-code-toolbox", "claude-code-toolbox"], providers: ["e2e"] })
-  expect(intent.targets).toEqual([expect.objectContaining({ resource_type: "organization", resource_id: newco.id })])
-  expect(intent.preview).toEqual({
-    summary: "Enable the Toolbox for organisation “Newco” (newco): e2e, from claude-code-toolbox",
-    changes: [{ path: `toolbox.catalogue[${newco.id}]`, from: [], to: ["e2e"] }], effects: ["permission_change", "external_call"],
-    warnings: [
-      "For each host client, the Toolbox makes in Answerable ID what is missing of: the client's link to the Toolbox, and the organisation's login and toolbox capabilities and entitlements for everyone in it. The receipt lists what it made and what it found.",
-      "Not atomic: if the Toolbox fails part-way, what it made stays; preparing and committing the same request again finishes it, skipping what exists.",
-    ],
-    quantities: [],
-  })
-  expect(toolbox.received.filter(({ method }) => method === "POST")).toEqual([])
-  expect((await committed(intent)).results).toEqual({ created: ["link claude-code-toolbox", "catalogue e2e"], existing: [] })
-  expect(toolbox.received.at(-1)).toEqual({ method: "POST", path: `/organisations/${newco.id}/enable`, body: { hostClientIds: ["claude-code-toolbox"], providers: ["e2e"] } })
-  expect(id.scopesAsked).toContain("toolbox:admin")
-  const again = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: ["claude-code-toolbox"], providers: ["docs", "e2e"] })
-  expect(again.preview.changes).toEqual([{ path: `toolbox.catalogue[${newco.id}]`, from: ["e2e"], to: ["docs", "e2e"] }])
-  expect((await committed(again)).results).toEqual({ created: ["catalogue docs"], existing: ["link claude-code-toolbox", "catalogue e2e"] })
-  expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: ["claude-code-toolbox"], providers: ["e2e", "payroll"] })).toMatchObject({
-    code: "INVALID_INPUT", message: "The Toolbox has no provider payroll; it has docs, e2e", details: { field_violations: [{ field: "providers" }] },
-  })
-  expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: ["nobody"], providers: ["e2e"] })).toMatchObject({
-    code: "INVALID_INPUT", message: "Answerable ID has no client nobody; register it first", details: { field_violations: [{ field: "hostClientIds" }] },
-  })
-  const log = spyOn(console, "error").mockImplementation(() => {})
-  try {
-    toolbox.outage(true)
-    expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: ["claude-code-toolbox"], providers: ["e2e"] })).toMatchObject({
-      code: "UPSTREAM_UNAVAILABLE", message: "The Toolbox answered GET https://toolbox.test/admin/v1/providers with 500 internal_error: The Toolbox failed to answer; its log says why",
-      details: { upstream: { status: 500, code: "internal_error" } },
+describe("toolbox_enable", () => {
+  const signIn = ["openid", "offline_access"]
+  const host = "claude-code-toolbox"
+  const rows = [
+    { path: `link ${host}`, from: null, to: { linked: toolboxMcp } },
+    { path: `capability ${host} login authorization_code`, from: null, to: { clientId: host, resource: null, grantKind: "authorization_code", scopes: signIn } },
+    { path: `capability ${host} login refresh_token`, from: null, to: { clientId: host, resource: null, grantKind: "refresh_token", scopes: signIn } },
+    { path: `capability ${host} toolbox authorization_code`, from: null, to: { clientId: host, resource: toolboxMcp, grantKind: "authorization_code", scopes: ["toolbox"] } },
+    { path: `capability ${host} toolbox refresh_token`, from: null, to: { clientId: host, resource: toolboxMcp, grantKind: "refresh_token", scopes: ["toolbox"] } },
+    { path: `entitlement ${host} login`, from: null, to: { clientId: host, scopes: signIn } },
+    { path: `entitlement ${host} toolbox`, from: null, to: { clientId: host, resource: toolboxMcp, scopes: ["toolbox"] } },
+  ]
+
+  test("prepare reads the Toolbox's providers and catalogue and what ID holds, and previews exactly the rows and the catalogue entries it would make; nothing is written", async () => {
+    const { id, toolbox, world: { newco }, prepare, writes } = await setup()
+    const intent = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: [host, host], providers: ["e2e"] })
+    expect(intent).toMatchObject({ policy_class: "controlled", commit_tool: "admin_commit_confirmed" })
+    expect(intent.targets).toEqual([
+      expect.objectContaining({ resource_type: "organization", resource_id: newco.id }),
+      { resource_type: "resource", resource_id: toolboxMcp, label: toolboxMcp, version: { kind: "etag", value: etag(id.resourceOf(toolboxMcp)) } },
+    ])
+    expect(intent.preview).toEqual({
+      summary: "Enable the Toolbox for organisation “Newco” (newco): e2e, from claude-code-toolbox",
+      changes: [...rows, { path: `toolbox.catalogue[${newco.id}]`, from: [], to: ["e2e"] }],
+      effects: ["permission_change", "external_call"],
+      warnings: [
+        "Everyone in the organisation may sign in to the Toolbox from claude-code-toolbox once this commits; what each person may use there still needs access_grant of grant strings.",
+        "Not atomic: if Answerable ID or the Toolbox fails part-way, what was made stays; preparing and committing the same request again finishes it, skipping what exists.",
+        noPrecondition("creating a capability or an entitlement"),
+      ],
+      quantities: [],
     })
-  } finally { log.mockRestore() }
+    expect(writes()).toEqual([])
+    expect(toolbox.received.filter(({ method }) => method !== "GET")).toEqual([])
+  })
+
+  test("commit makes each row in ID as the admin MCP's own client, under the intent's key and its place, then enables the catalogue; repeating it finds everything", async () => {
+    const { id, toolbox, world: { newco }, prepare, commit, committed, writes } = await setup()
+    const intent = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e"] })
+    expect((await committed(intent)).results).toEqual({ created: [...rows.map(row => row.path), "catalogue e2e"], existing: [] })
+    expect(writes().map(({ request, idempotencyKey, caller }) => [request, idempotencyKey, caller])).toEqual([
+      [`PUT /api/admin/v1/clients/${host}/resources/${encodeURIComponent(toolboxMcp)}`, `${intent.intent_id}.0`, "admin-mcp"],
+      ...[1, 2, 3, 4].map(index => [`POST /api/admin/v1/organizations/${newco.id}/capabilities`, `${intent.intent_id}.${index}`, "admin-mcp"]),
+      ...[5, 6].map(index => [`POST /api/admin/v1/organizations/${newco.id}/entitlements`, `${intent.intent_id}.${index}`, "admin-mcp"]),
+    ])
+    expect(id.resourceOf(toolboxMcp).clients).toEqual([host])
+    expect(id.entitlements(newco.id).map(row => [row.clientId, row.resource, row.memberId, row.groupId, row.scopes])).toEqual([[host, null, null, null, signIn], [host, toolboxMcp, null, null, ["toolbox"]]])
+    expect(toolbox.received.filter(({ method }) => method !== "GET")).toEqual([{ method: "PUT", path: `/organisations/${newco.id}/catalogue/e2e`, body: { enabled: true } }])
+    expect(id.scopesAsked).toContain("toolbox:admin")
+    const count = writes().length
+    expect((await commit(intent)).structuredContent).toMatchObject({ idempotent_replay: true })
+    expect(writes()).toHaveLength(count)
+    const again = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e"] })
+    expect(again.preview.changes).toEqual([{ path: `toolbox.catalogue[${newco.id}]`, from: ["e2e"], to: ["e2e"] }])
+    expect((await committed(again)).results).toEqual({ created: [], existing: [...rows.map(row => row.path), "catalogue e2e"] })
+    expect(writes()).toHaveLength(count)
+  })
+
+  test("a commit that fails part-way leaves what it made, and preparing and committing again makes only the rest", async () => {
+    const { id, world: { newco }, prepare, commit, committed } = await setup()
+    const intent = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e"] })
+    // The sixth write, the login entitlement, is refused.
+    id.failWrite(6, 409)
+    const log = spyOn(console, "error").mockImplementation(() => {})
+    try {
+      expect((await commit(intent)).isError).toBe(true)
+    } finally { log.mockRestore() }
+    expect(id.capabilities(newco.id)).toHaveLength(4)
+    expect(id.entitlements(newco.id)).toEqual([])
+    const again = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e"] })
+    expect(again.preview.changes.map(change => change.path)).toEqual([`entitlement ${host} login`, `entitlement ${host} toolbox`, `toolbox.catalogue[${newco.id}]`])
+    expect((await committed(again)).results).toEqual({
+      created: [`entitlement ${host} login`, `entitlement ${host} toolbox`, "catalogue e2e"], existing: rows.slice(0, 5).map(row => row.path),
+    })
+  })
+
+  test("a provider whose grant strings the Toolbox's resource does not allow yet is refused until the deploy's register Job allows them; an entry's overrides are kept", async () => {
+    const { id, toolbox, world: { newco }, prepare, refusal, committed } = await setup()
+    expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["docs", "e2e"] })).toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: `${toolboxMcp} does not allow docs docs/pages docs/pages.read yet: the register Job of the deploy that ships a provider allows its grant strings once the servers have rolled. Wait for the deploy to finish, then prepare again`,
+      details: { preconditions: [{ resource: toolboxMcp, lacking: ["docs", "docs/pages", "docs/pages.read"] }] },
+    })
+    id.resourceOf(toolboxMcp).allowedScopes.push("docs", "docs/pages", "docs/pages.read")
+    const overrides = { disabled: ["docs/pages.read"], policy_class: {} }
+    toolbox.set(newco.id, "docs", { enabled: false, overrides })
+    const intent = await prepare("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e", "docs", "e2e"] })
+    expect(intent.preview.changes.at(-1)).toEqual({ path: `toolbox.catalogue[${newco.id}]`, from: [], to: ["docs", "e2e"] })
+    await committed(intent)
+    expect(toolbox.received.filter(({ method }) => method === "PUT").map(({ path, body }) => [path, body])).toEqual([
+      [`/organisations/${newco.id}/catalogue/docs`, { enabled: true, overrides }],
+      [`/organisations/${newco.id}/catalogue/e2e`, { enabled: true }],
+    ])
+  })
+
+  test("refuses a provider the Toolbox does not mount, a client ID does not hold, a row that does not fit, and a Toolbox that does not answer", async () => {
+    const { id, toolbox, world: { newco }, refusal } = await setup()
+    expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e", "payroll"] })).toMatchObject({
+      code: "INVALID_INPUT", message: "The Toolbox has no provider payroll; it has docs, e2e", details: { field_violations: [{ field: "providers" }] },
+    })
+    expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: ["nobody"], providers: ["e2e"] })).toMatchObject({
+      code: "INVALID_INPUT", message: "Answerable ID has no client nobody; register it first", details: { field_violations: [{ field: "hostClientIds" }] },
+    })
+    const disabled = id.entitlement(newco.id, { clientId: host, resource: toolboxMcp, scopes: ["toolbox"] })
+    Object.assign(disabled, { status: "disabled" })
+    expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e"] })).toMatchObject({
+      code: "PRECONDITION_FAILED", message: `Answerable ID already holds the toolbox entitlement of ${host} (${disabled.id}) with status disabled and scopes toolbox; enable it, then prepare again`,
+    })
+    const log = spyOn(console, "error").mockImplementation(() => {})
+    try {
+      toolbox.outage(true)
+      expect(await refusal("toolbox_enable", { organizationId: newco.id, hostClientIds: [host], providers: ["e2e"] })).toMatchObject({
+        code: "UPSTREAM_UNAVAILABLE", message: "The Toolbox answered GET https://toolbox.test/admin/v1/providers with 500 internal_error: The Toolbox failed to answer; its log says why",
+        details: { upstream: { status: 500, code: "internal_error" } },
+      })
+    } finally { log.mockRestore() }
+  })
 })
 
 describe("standalone_enable", () => {

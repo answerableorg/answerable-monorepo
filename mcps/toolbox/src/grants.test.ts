@@ -1,12 +1,9 @@
 import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test"
 import { createIdAdmin } from "@answerable/id-admin"
 import { createFakeId } from "@answerable/id-admin/testing"
-import { defineProvider, defineTool, ToolError } from "@answerable/mcp"
+import { ToolError } from "@answerable/mcp"
 import { testPrincipal as principal } from "@answerable/mcp/testing"
-import { z } from "zod"
-import { allowedScopes, createGrantsReader, isGrant } from "./grants"
-
-const purpose = "A fixture provider for the Toolbox's tests: it serves the tools each test gives it."
+import { createGrantsReader, isGrant } from "./grants"
 
 const toolbox = "https://toolbox.test/mcp"
 afterEach(() => setSystemTime())
@@ -22,14 +19,6 @@ function setup() {
 test("grant strings are providers, domains and capabilities, and toolbox/approve and toolbox/code", () => {
   for (const scope of ["e2e", "e2e/records", "e2e/records.list", "toolbox/approve", "toolbox/code", "a23456789012/b234567890123456.c234567890123456"]) expect(isGrant(scope), scope).toBe(true)
   for (const scope of ["toolbox", "offline_access", "e2e:read", "E2E", "e2e/records.list.more", "a234567890123/b", "e2e/", "e2e/records."]) expect(isGrant(scope), scope).toBe(false)
-})
-
-test("the Toolbox resource allows toolbox, offline_access, toolbox/approve and every grant string of its providers", () => {
-  const tool = (name: string) => defineTool({ name, description: "A fixture tool that returns nothing and changes nothing.", input: z.object({}), output: z.object({}), async execute() { return {} } })
-  const providers = [defineProvider({ id: "crm", description: purpose, version: "2026-09-29", tools: [tool("contacts.list"), tool("contacts.get"), tool("deals.list")] })]
-  expect(allowedScopes(providers)).toEqual([
-    "crm", "crm/contacts", "crm/contacts.get", "crm/contacts.list", "crm/deals", "crm/deals.list", "offline_access", "toolbox", "toolbox/approve",
-  ])
 })
 
 test("reads the grant strings of the member's Toolbox targets: the resource's through every client, a client's own only through that client, and nothing else", async () => {

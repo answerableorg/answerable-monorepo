@@ -25,7 +25,7 @@ const compose = Bun.fileURLToPath(new URL("../host-lane/compose.yaml", import.me
 const id = await startId({ tenants: [{ slug: "host-lane", signIns: 12 }] })
 const { admin, manifest } = id
 const tenant = manifest.tenants[0]!
-const { toolbox, adminApi } = await startToolboxStack(id, { hosts, database: "answerable_toolbox_hostlane" })
+const { toolbox, enable } = await startToolboxStack(id, { hosts, database: "answerable_toolbox_hostlane" })
 // One line per request, so the log shows what each host sent and what the Toolbox answered.
 serve(47_604, async request => {
   const rpc = request.method === "POST" ? await request.clone().json().catch(() => undefined) as { method?: string; params?: { name?: string } } | undefined : undefined
@@ -36,9 +36,8 @@ serve(47_604, async request => {
 })
 
 step("Enabling the organisation for both host clients, and entitling it to e2e/records only")
-const enabled = await adminApi("POST", `/organisations/${tenant.organizationId}/enable`, { hostClientIds: hosts.map(host => host.clientId), providers: ["e2e"] })
-if (enabled.status !== 200) throw new Error(`Enabling the organisation answered ${enabled.status}: ${JSON.stringify(enabled.body)}`)
-step(`Enabled: ${z.object({ created: z.array(z.string()) }).parse(enabled.body).created.length} rows made in ID and the catalogue`)
+const enabled = await enable(tenant.organizationId, hosts.map(host => host.clientId), ["e2e"])
+step(`Enabled: ${enabled.made.length + enabled.enabled.length} rows made in ID and the catalogue`)
 await admin("POST", `/organizations/${tenant.organizationId}/entitlements`, { resource, scopes: ["e2e/records"] })
 
 // ID's OAuth events as they happen: an authorisation, a code exchange, a refresh.

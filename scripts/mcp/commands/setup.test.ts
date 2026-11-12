@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, test } from "bun:test"
 import { stat } from "node:fs/promises"
 import { join } from "node:path"
 import { parseEnv } from "node:util"
-import { toolboxScopes } from "../../../infra/ops/src/toolbox-scopes.generated"
 import { main } from "../cli"
 import { definitions } from "../definitions"
 import { onboarding } from "./setup"
@@ -47,8 +46,8 @@ test("with the root secret unlocked it makes mcp-dev, the Toolbox's registration
     `PUT /clients/mcp-dev/resources/${encodeURIComponent("http://localhost:47400/admin")}`, `POST /organizations/${platform(id)}/capabilities`,
   ])
   expect(id.resourceOf("http://localhost:47400/admin")).toMatchObject({ allowedScopes: ["toolbox:admin"], accessTokenTtl: 300, clients: ["mcp-dev"] })
-  // Every grant string of the MCPs the Toolbox's hub serves, as the register Job allows them in a deployment.
-  expect(id.resourceOf("http://localhost:47400/mcp")).toMatchObject({ allowedScopes: [...toolboxScopes], accessTokenTtl: 900 })
+  // Every grant string of the MCPs the Toolbox's hub serves, none in this repository, as the register Job allows them in a deployment.
+  expect(id.resourceOf("http://localhost:47400/mcp")).toMatchObject({ allowedScopes: ["offline_access", "toolbox", "toolbox/approve"], accessTokenTtl: 900 })
   expect(id.capabilities(platform(id)).map(row => [row.clientId, row.resource, row.grantKind, row.scopes])).toEqual([
     ["mcp-dev", "http://localhost:47300/api/admin", "client_credentials", ["platform:read", "platform:write"]],
     ["mcp-dev", "http://localhost:47400/admin", "client_credentials", ["toolbox:admin"]],

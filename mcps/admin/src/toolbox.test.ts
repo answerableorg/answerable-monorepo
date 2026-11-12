@@ -21,15 +21,15 @@ test("a refusal by ID or the Toolbox is UPSTREAM_REJECTED with what was refused,
       id: createIdAdmin(id.config), resource: toolboxResource,
       fetch: async () => Response.json({ error: { code: "forbidden", message: "The token lacks the toolbox:admin scope" } }, { status: 403 }),
     })
-    expect(await failure(forbidden.enabled(crypto.randomUUID()))).toMatchObject({ code: "UPSTREAM_REJECTED", details: { upstream: { status: 403, code: "forbidden" } } })
+    expect(await failure(forbidden.catalogue(crypto.randomUUID()))).toMatchObject({ code: "UPSTREAM_REJECTED", details: { upstream: { status: 403, code: "forbidden" } } })
     const gone = createToolboxAdmin({ id: createIdAdmin(id.config), resource: toolboxResource, fetch: async () => { throw new TypeError("Unable to connect") } })
     expect(await failure(gone.providers())).toMatchObject({ code: "UPSTREAM_UNAVAILABLE", message: `The Toolbox at ${toolboxResource} did not answer; try again shortly` })
     id.unreachable(true)
     const silent = createToolboxAdmin({ id: createIdAdmin(id.config), resource: toolboxResource, fetch: createFakeToolbox(id).fetch })
     expect(await failure(silent.providers())).toMatchObject({ code: "UPSTREAM_UNAVAILABLE" })
     const broken = createToolboxAdmin({ id: createIdAdmin(createIdFake().config), resource: toolboxResource, fetch: async () => new Response("Bad gateway", { status: 502 }) })
-    expect(await failure(broken.enable(crypto.randomUUID(), { hostClientIds: ["a"], providers: ["e2e"] }))).toMatchObject({
-      code: "UPSTREAM_UNAVAILABLE", message: expect.stringMatching(/^The Toolbox answered POST .+\/enable with 502$/), details: { upstream: { status: 502, code: null } },
+    expect(await failure(broken.enable(crypto.randomUUID(), "e2e", undefined))).toMatchObject({
+      code: "UPSTREAM_UNAVAILABLE", message: expect.stringMatching(/^The Toolbox answered PUT .+\/catalogue\/e2e with 502$/), details: { upstream: { status: 502, code: null } },
     })
   } finally { log.mockRestore() }
 })

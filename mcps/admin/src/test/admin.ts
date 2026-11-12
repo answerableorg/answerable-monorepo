@@ -26,12 +26,12 @@ export type FakeId = ReturnType<typeof createIdFake>
 
 /**
  * The Toolbox's admin API in memory: it accepts only a token the fake ID issued for its admin resource with `toolbox:admin`, lists two providers,
- * and its enable operation reports, per host client and provider, what it made and what it found.
+ * `docs` with `docs/pages.read` and `e2e` with no capability, and keeps each organisation's catalogue, which `PUT` replaces an entry of.
  */
 export function createFakeToolbox(id: FakeId) {
-  const done = new Map<string, Set<string>>()
+  const catalogues = new Map<string, Map<string, { enabled: boolean; overrides: unknown }>>()
   const received: { method: string; path: string; body: unknown }[] = []
-  const steps = (organisation: string) => done.get(organisation) ?? done.set(organisation, new Set()).get(organisation)!
+  const catalogueOf = (organisation: string) => catalogues.get(organisation) ?? catalogues.set(organisation, new Map()).get(organisation)!
   let down = false
   async function fetch(input: string | URL | Request, init?: RequestInit) {
     const request = new Request(input, init)
@@ -41,20 +41,25 @@ export function createFakeToolbox(id: FakeId) {
     if (token?.resource !== toolboxResource || !token.scope.split(" ").includes("toolbox:admin")) {
       return Response.json({ error: { code: "unauthorized", message: `Send a machine client's access token for ${toolboxResource} as Authorization: Bearer` } }, { status: 401 })
     }
-    const body = request.method === "POST" ? await request.json() as { hostClientIds: string[]; providers: string[] } : undefined
+    const body = request.method === "PUT" ? await request.json() as { enabled: boolean; overrides?: unknown } : undefined
     received.push({ method: request.method, path, body })
-    if (path === "/providers") return Response.json({ items: ["docs", "e2e"].map(provider => ({ id: provider, version: "2026-09-29", capabilities: [] })) })
+    if (path === "/providers") {
+      return Response.json({ items: [{ id: "docs", capabilities: [{ identity: "docs/pages.read" }] }, { id: "e2e", capabilities: [] }].map(provider => ({ ...provider, version: "2026-09-29" })) })
+    }
     const catalogue = /^\/organisations\/([^/]+)\/catalogue$/.exec(path)
-    if (catalogue) return Response.json({ items: [...steps(catalogue[1]!)].filter(step => step.startsWith("catalogue ")).map(step => ({ provider_id: step.slice(10), enabled: true, overrides: {} })) })
-    const enable = /^\/organisations\/([^/]+)\/enable$/.exec(path)
-    if (!enable || !body) return Response.json({ error: { code: "not_found", message: `There is no route ${request.method} ${path}` } }, { status: 404 })
-    const wanted = [...body.hostClientIds.map(client => `link ${client}`), ...body.providers.map(provider => `catalogue ${provider}`)]
-    const held = steps(enable[1]!)
-    const answer = { organisation_id: enable[1], created: wanted.filter(step => !held.has(step)), existing: wanted.filter(step => held.has(step)) }
-    for (const step of wanted) held.add(step)
-    return Response.json(answer)
+    if (catalogue) return Response.json({ items: [...catalogueOf(catalogue[1]!)].map(([provider_id, entry]) => ({ provider_id, ...entry })) })
+    const entry = /^\/organisations\/([^/]+)\/catalogue\/([^/]+)$/.exec(path)
+    if (!entry || !body) return Response.json({ error: { code: "not_found", message: `There is no route ${request.method} ${path}` } }, { status: 404 })
+    const written = { enabled: body.enabled, overrides: body.overrides ?? { disabled: [], policy_class: {} } }
+    catalogueOf(entry[1]!).set(entry[2]!, written)
+    return Response.json({ provider_id: entry[2], ...written })
   }
-  return { fetch, received, outage(value: boolean) { down = value } }
+  return {
+    fetch, received,
+    outage(value: boolean) { down = value },
+    /** Set an organisation's catalogue entry for a provider, as staff do through the catalogue's `PUT`. */
+    set(organisation: string, provider: string, entry: { enabled: boolean; overrides: unknown }) { catalogueOf(organisation).set(provider, entry) },
+  }
 }
 
 /**

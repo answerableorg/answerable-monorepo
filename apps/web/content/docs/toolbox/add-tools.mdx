@@ -54,9 +54,9 @@ At boot the Toolbox checks that its serving login has `USAGE` on the schema of e
 
 ### Enable it for an organisation
 
-Staff run `toolbox_enable` in [the admin MCP](/docs/admin) for the organisation, naming the provider; locally, `bun mcp dev acme` makes the same call for your organisation. It is the Toolbox's enable call: [What the call does](/docs/toolbox/admin#what-the-call-does) lists every step.
+Staff run `toolbox_enable` in [the admin MCP](/docs/admin) for the organisation, naming the provider; locally, `bun mcp dev acme` makes the same rows for your organisation. [What enabling makes](/docs/toolbox/admin#what-enabling-makes) lists every step.
 
-The catalogue is the ceiling: an organisation uses only the providers enabled for it. The call enables `acme` for the organisation, and widens the Toolbox's resource in Answerable ID to accept `acme`'s grant strings. Run it for every organisation that should have the provider, including those enabled before it existed.
+The catalogue is the ceiling: an organisation uses only the providers enabled for it. `toolbox_enable` enables `acme` for the organisation. The Toolbox's resource in Answerable ID accepts `acme`'s grant strings once the register Job of the deploy that ships `acme` has run, from the list `bun mcp` writes. Run it for every organisation that should have the provider, including those enabled before it existed.
 
 </Step>
 <Step>
@@ -122,8 +122,9 @@ Remote providers: the Toolbox mounts MCPs in its own process, so adding one is a
 | `mounted.generated.ts` or the Toolbox's `package.json` is stale in `bun mcp check` | `mcp.json` changed without the generated files | `bun mcp check acme` rewrites them: commit them |
 | `Provider … is mounted twice…` at start | Two providers share an id, or a provider is the Toolbox's own | Rename the provider's id |
 | `Capability <identity> version <date> changed its input without a new version…` at start | A contract changed under an old version | Give the tool or the provider a new version |
-| `422 unknown_provider` from the enable call, or `toolbox_enable` refused | The Toolbox does not mount that provider | Mount it and restart; `GET /providers` lists what is mounted |
+| `toolbox_enable` answers `INVALID_INPUT`: `The Toolbox has no provider acme` | The Toolbox does not mount that provider | Mount it and restart; `GET /providers` lists what is mounted |
+| `toolbox_enable` answers `PRECONDITION_FAILED`: `… does not allow acme … yet` | The register Job of the deploy that ships `acme` has not run yet | Wait for the deploy to finish, then prepare again; locally, `bun mcp dev acme` allows them |
 | `Tool acme_notes_list not found` | The organisation has not enabled `acme`, no grant string covers the tool, or the tool is disabled in the catalogue | `toolbox_enable`; `access_grant`; check the organisation's catalogue ([The catalogue](/docs/toolbox/admin#the-catalogue)) |
-| The entitlement is refused with `Scopes are not allowed for this resource` | The Toolbox's resource does not accept `acme`'s grant strings yet | Run `toolbox_enable` for `acme` first; it widens the resource |
+| The entitlement is refused with `Scopes are not allowed for this resource` | The Toolbox's resource does not accept `acme`'s grant strings yet | The same as the line before it |
 
 The Toolbox's other errors are in [The Toolbox](/docs/toolbox#errors) and [Administer the Toolbox](/docs/toolbox/admin#errors).

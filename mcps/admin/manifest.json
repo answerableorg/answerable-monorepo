@@ -4071,7 +4071,7 @@
       "name": "toolbox_enable",
       "version": "2026-10-01",
       "kind": "mutate",
-      "description": "Prepare enabling the Toolbox for an organisation: the named providers in its catalogue, and for each named host client what Answerable ID needs so that its people can sign in to the Toolbox from it. Changes nothing: returns a preview; show the person its summary, then commit the intent with admin_commit_confirmed and that summary. What each person may use still needs access_grant of grant strings. Safe to repeat.",
+      "description": "Prepare enabling the Toolbox for an organisation: the named providers in its catalogue, and for each named host client what Answerable ID needs so that its people can sign in to the Toolbox from it: the client's link to the Toolbox, the organisation's sign-in and toolbox capabilities for both grant kinds, and the sign-in and toolbox entitlements for everyone in it. Changes nothing: returns a preview; show the person its summary, then commit the intent with admin_commit_confirmed and that summary. What each person may use still needs access_grant of grant strings. Safe to repeat.",
       "scopes": [
         "admin"
       ],
@@ -4138,7 +4138,7 @@
             "items": {
               "type": "string"
             },
-            "description": "What the Toolbox made"
+            "description": "What the commit made, in Answerable ID and the Toolbox's catalogue"
           },
           "existing": {
             "type": "array",

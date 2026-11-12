@@ -87,7 +87,7 @@ From inside `mcps/acme` the name can be left out. It runs these steps, a line ea
 - **Every MCP is migrated, in one process.** The Toolbox serves every MCP of its generated list, whatever the MCP you named, so one that was never provisioned on your machine stops it from starting. The `database` step provisions and migrates them all in the `bun mcp` process, then runs the Toolbox's own `db:migrate`.
 - **The Toolbox starts with hot reload,** as `mcp-dev`, and serves the MCP in its hub (`serve` `toolbox`), at its own path (`standalone`) or both. The step waits for its `/health` to list the MCP.
 - **A standalone MCP** gets its resource, `http://localhost:47400/acme/mcp`, and its client, `claude-code-acme`, registered field for field as [the register Job](/docs/admin/setup) registers them, then your organisation gets the rows `standalone_enable` makes with `everyone: true`.
-- **A Toolbox MCP** is enabled for your organisation through the Toolbox's admin API, and your organisation is granted its grant string, `acme`, by widening the one entitlement that ID keeps for your organisation on the Toolbox.
+- **A Toolbox MCP** gets its grant strings allowed on the Toolbox's resource, as the register Job allows them; then your organisation gets the rows `toolbox_enable` makes, from the same plan, as `mcp-dev`, and `acme` in its catalogue through the Toolbox's admin API; then your organisation is granted its grant string, `acme`, by widening the one entitlement that ID keeps for your organisation on the Toolbox.
 - **Then it prints what to do,** and runs until Ctrl-C, which stops what it started.
 
 Every step is safe to run again. A scope that the MCP gained since the last run widens the rows ID holds; nothing narrows what your organisation holds.
@@ -116,7 +116,7 @@ Ctrl-C stops the Toolbox; an edit to acme reloads it.
 ```text
 ok      database   schemas acme; the database of the Toolbox
 ok      toolbox    serving acme at http://localhost:47400/mcp
-ok      enable     organisation answerable: 2 rows made in ID and the catalogue; acme granted to the organisation
+ok      enable     organisation answerable: 8 rows made in ID and the catalogue; acme granted to the organisation
 
 acme runs in the Toolbox at http://localhost:47400/mcp, as the tools acme_*.
 

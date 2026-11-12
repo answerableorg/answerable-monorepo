@@ -41,9 +41,12 @@ export async function all<Item>(call: Call, path: string) {
   }
 }
 
-/** The Toolbox in ID: its resource, its admin resource and Claude Code as its host client, as the register Job registers them. */
-export async function registerToolbox(registrar: Registrar, stack: Stack = local) {
-  const { resources, host } = toolboxRows(stack.toolbox, stack.callback)
+/**
+ * The Toolbox in ID: its resource, allowing `scopes` (the repository's: `toolboxScopesAt`), its admin resource and Claude Code as its host client,
+ * as the register Job registers them.
+ */
+export async function registerToolbox(registrar: Registrar, scopes: readonly string[], stack: Stack = local) {
+  const { resources, host } = toolboxRows(stack.toolbox, stack.callback, scopes)
   for (const [key, fields] of resources) await registrar.resource(key, fields)
   await registrar.client(...host)
 }

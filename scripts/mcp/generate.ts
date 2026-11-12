@@ -49,14 +49,16 @@ async function packageJsonOf(path: string, served: readonly Declaration[]) {
 }
 
 /**
- * The Toolbox resource's allowed scopes in ID: `offline_access`, `toolbox`, `toolbox/approve`, and the grant strings of each MCP its hub serves
- * (`toolbox` or `both`): its name, and each domain and capability of its manifest's tools, the commit tools aside. One without a manifest yet adds its name.
+ * The Toolbox resource's allowed scopes in ID for the repository at `root`: `offline_access`, `toolbox`, `toolbox/approve`, and the grant strings of
+ * each MCP its hub serves (`toolbox` or `both`): its name, and each domain and capability of its manifest's tools, the commit tools aside. One without
+ * a manifest yet adds its name.
  */
-export function toolboxScopesOf(served: readonly { name: string; manifest: Manifest | undefined }[]) {
+export async function toolboxScopesAt(root: string) {
   const scopes = new Set(["offline_access", "toolbox", "toolbox/approve"])
-  for (const { name, manifest } of served) {
+  for (const { name, serve } of await declarations(root)) {
+    if (serve === "standalone") continue
     scopes.add(name)
-    for (const { identity, kind } of manifest?.tools ?? []) if (kind !== "commit") scopes.add(identity.split(".")[0]!).add(identity)
+    for (const { identity, kind } of (await manifestOf(root, name))?.tools ?? []) if (kind !== "commit") scopes.add(identity.split(".")[0]!).add(identity)
   }
   return [...scopes].sort()
 }
@@ -76,13 +78,13 @@ export const scopesOf = (manifest: Manifest) => [...new Set([...manifest.tools, 
 /** Every generated file's text, by path. The Toolbox's list and dependencies are written only where its workspace is. */
 export async function generatedFiles(root: string): Promise<Record<string, string>> {
   const declared = await declarations(root)
-  const manifests = await Promise.all(declared.map(async ({ name }) => manifestOf(root, name)))
-  const mcps = declared.map(({ name, serve, database }, index) => ({ name, serve, database, scopes: manifests[index] ? scopesOf(manifests[index]) : [] }))
+  const mcps = await Promise.all(declared.map(async ({ name, serve, database }) => {
+    const manifest = await manifestOf(root, name)
+    return { name, serve, database, scopes: manifest ? scopesOf(manifest) : [] }
+  }))
   const list = { $comment: "Written by bun mcp from mcps/*/mcp.json and each manifest.json (scripts/mcp/generate.ts); never edit it by hand", mcps }
   const files: Record<string, string> = { [chartList]: json(list) }
-  if (existsSync(join(root, ops.workspace, "package.json"))) {
-    files[ops.scopes] = scopesFileOf(toolboxScopesOf(declared.flatMap(({ name, serve }, index) => (serve === "standalone" ? [] : [{ name, manifest: manifests[index] }]))))
-  }
+  if (existsSync(join(root, ops.workspace, "package.json"))) files[ops.scopes] = scopesFileOf(await toolboxScopesAt(root))
   if (existsSync(join(root, toolbox.workspace, "package.json"))) {
     files[toolbox.list] = listOf(declared)
     files[`${toolbox.workspace}/package.json`] = await packageJsonOf(join(root, toolbox.workspace, "package.json"), declared)

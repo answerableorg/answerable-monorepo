@@ -8,7 +8,7 @@ import { adminCall, createRegistrar, machineToken, makeMcpDev, registerStandalon
 import { decodeJwt } from "jose"
 import { z } from "zod"
 import { connect, intentSchema, launchBrowser, serve, serveCallback, signIn, startId, step, tool, type Id, type OAuthSession } from "../index"
-import { startToolboxStack } from "../toolbox"
+import { startToolboxStack, toolboxScopes } from "../toolbox"
 
 const stack = stackAt({ id: "http://127.0.0.1:47600", toolbox: "http://127.0.0.1:47604", callbackPort: 47603, callbackHost: "127.0.0.1" })
 const e2e = `${stack.toolbox}/e2e/mcp`
@@ -40,7 +40,7 @@ beforeAll(async () => {
   step("bun mcp setup, as the root secret does it: the Toolbox's resources and host client, and mcp-dev with its capabilities")
   const root = createRegistrar(adminCall(fetch, id.manifest.rootSecret, stack))
   const platform = z.object({ items: z.array(z.object({ id: z.uuid(), slug: z.string() })) }).parse(await id.admin("GET", "/organizations?q=answerable")).items.find(item => item.slug === "answerable")!.id
-  await registerToolbox(root, stack)
+  await registerToolbox(root, toolboxScopes, stack)
   mcpDev = await makeMcpDev(root, platform, stack)
   // ID makes its signing key when it signs its first token: mcp-dev's first token comes before anything asks for two at once.
   const token = await machineToken(fetch, mcpDev, stack.adminResource, "platform:read platform:write", stack)
@@ -51,7 +51,7 @@ beforeAll(async () => {
   for (const slug of tenants) {
     const { organizationId } = tenant(slug)
     await giveStandaloneAccess(mcpDevCall, organizationId, "e2e", stack)
-    await enableInToolbox({ fetch }, mcpDevCall, mcpDev, organizationId, "example", stack)
+    await enableInToolbox({ fetch }, mcpDevCall, mcpDev, organizationId, "example", toolboxScopes, stack)
   }
   browser = await launchBrowser()
 })
@@ -131,7 +131,7 @@ test("a scope an MCP gains later, and a second MCP enabled in the Toolbox, widen
   expect((await held(`/organizations/${organizationId}/entitlements?resource=${encodeURIComponent(gadget)}`)).map(row => [row.clientId, row.scopes, row.status])).toEqual([["claude-code-gadget", ["gadget:read", "gadget:write"], "active"]])
   expect((await held(`/organizations/${organizationId}/capabilities`)).filter(row => row.resource === gadget).map(row => row.scopes)).toEqual([["gadget:read", "gadget:write"], ["gadget:read", "gadget:write"]])
   expect(await giveStandaloneAccess(mcpDevCall, organizationId, "gadget", stack)).toBe("already in place")
-  expect(await enableInToolbox({ fetch }, mcpDevCall, mcpDev, organizationId, "e2e", stack)).toMatch(/ rows made in ID and the catalogue; e2e granted to the organisation$/)
+  expect(await enableInToolbox({ fetch }, mcpDevCall, mcpDev, organizationId, "e2e", toolboxScopes, stack)).toMatch(/ rows made in ID and the catalogue; e2e granted to the organisation$/)
   const toolbox = (await held(`/organizations/${organizationId}/entitlements?resource=${encodeURIComponent(stack.toolboxResource)}`)).filter(row => !row.clientId)
   expect(toolbox.map(row => [row.scopes, row.status])).toEqual([[["e2e", "example"], "active"]])
 })

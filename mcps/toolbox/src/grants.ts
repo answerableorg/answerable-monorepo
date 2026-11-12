@@ -1,21 +1,11 @@
 import { found, type IdAdmin } from "@answerable/id-admin"
-import { ToolError, type Provider, type UserPrincipal } from "@answerable/mcp"
+import { ToolError, type UserPrincipal } from "@answerable/mcp"
 import { z } from "zod"
 
 const grantForm = /^([a-z][a-z0-9]{0,11})(\/[a-z][a-z0-9]{0,15}(\.[a-z][a-z0-9]{0,15})?)?$/
 
 /** Whether an entitlement scope is a grant string: a provider (`e2e`), a domain (`e2e/records`), a capability (`e2e/records.list`), `toolbox/approve` or `toolbox/code`. */
 export const isGrant = (scope: string) => scope !== "toolbox" && grantForm.test(scope)
-
-/** The Toolbox resource's `allowedScopes` in ID: `toolbox`, `offline_access`, `toolbox/approve` and every grant string of the mounted providers. */
-export function allowedScopes(providers: readonly Provider[]) {
-  const scopes = new Set(["offline_access", "toolbox", "toolbox/approve"])
-  for (const { id, tools } of providers) {
-    scopes.add(id)
-    for (const { name } of tools) scopes.add(`${id}/${name.split(".")[0]}`).add(`${id}/${name}`)
-  }
-  return [...scopes].sort()
-}
 
 const accessView = z.object({ targets: z.array(z.object({ kind: z.string(), id: z.string(), resource: z.string().optional(), scopes: z.array(z.string()) })) })
 type Target = z.output<typeof accessView>["targets"][number]

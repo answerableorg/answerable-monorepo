@@ -1,7 +1,6 @@
 // What the deployment registers in Answerable ID, and how: the register Job's (register.ts) and bun mcp's in the developer's local ID
 // (scripts/mcp/local-id.ts), so the two never differ. It imports nothing from @answerable/mcp, which the ops image does not carry.
 import { type Answer, type Call, failure, listAll } from "./admin-api"
-import { toolboxScopes } from "./toolbox-scopes.generated"
 
 /** The scopes every host client signs a person in with, and the grants it signs in and refreshes with. */
 export const signIn = ["openid", "offline_access"]
@@ -135,13 +134,13 @@ export const hostClient = (clientId: string, name: string, scopes: readonly stri
 })
 
 /**
- * The Toolbox at origin `toolbox` in ID, as register and bun mcp setup register it: its resource, allowing `toolboxScopes` (every grant string of the
- * MCPs its hub serves, from their manifests), and the resource of its admin API, each with its key, and Claude Code as its host client. Its machine
- * client is each caller's own.
+ * The Toolbox at origin `toolbox` in ID, as register and bun mcp setup register it: its resource, allowing `scopes` (every grant string of the MCPs
+ * its hub serves, from their manifests: register's are `toolbox-scopes.generated.ts`), and the resource of its admin API, each with its key, and
+ * Claude Code as its host client. Its machine client is each caller's own.
  */
-export const toolboxRows = (toolbox: string, callback: string) => ({
+export const toolboxRows = (toolbox: string, callback: string, scopes: readonly string[]) => ({
   resources: [
-    ["toolbox-resource-v1", { identifier: `${toolbox}/mcp`, name: "Toolbox", allowedScopes: [...toolboxScopes], accessTokenTtl: 900 }],
+    ["toolbox-resource-v1", { identifier: `${toolbox}/mcp`, name: "Toolbox", allowedScopes: [...scopes], accessTokenTtl: 900 }],
     ["toolbox-admin-resource-v1", { identifier: `${toolbox}/admin`, name: "Toolbox admin", allowedScopes: ["toolbox:admin"], accessTokenTtl: 300 }],
   ] as [string, ResourceFields][],
   host: ["claude-code-toolbox-v1", hostClient("claude-code-toolbox", "Claude Code (Toolbox)", ["toolbox"], callback)] as const,

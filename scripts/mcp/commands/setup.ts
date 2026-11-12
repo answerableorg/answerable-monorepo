@@ -5,6 +5,7 @@ import { cancelled } from "../ask"
 import { organisationSlug } from "../config"
 import { definitions } from "../definitions"
 import { readSettings, writeEnvironment } from "../environment"
+import { toolboxScopesAt } from "../generate"
 import { Refusal, runSteps, valueOf, type Command, type Io } from "../io"
 import { local } from "../local"
 import { adminCall, counts, createRegistrar, machine, machineToken, makeMcpDev, platformSlug, registerToolbox } from "../local-id"
@@ -80,7 +81,7 @@ export const setup: Command = {
     return runSteps(io, [
       {
         name: "toolbox", fix: "bun mcp setup",
-        run: async () => (await registerToolbox(registrar), `${local.toolboxResource}, its admin resource and claude-code-toolbox: ${counts(registrar)}`),
+        run: async () => (await registerToolbox(registrar, await toolboxScopesAt(root)), `${local.toolboxResource}, its admin resource and claude-code-toolbox: ${counts(registrar)}`),
       },
       {
         name: "client", fix: "bun mcp setup",

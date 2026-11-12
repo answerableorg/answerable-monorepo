@@ -2,12 +2,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { createEvidence, type Database } from "@answerable/mcp-postgres"
 import { rowsOf } from "@answerable/mcp-postgres/testing"
-import { allowedScopes } from "@answerable/mcp-toolbox/grants"
 import type { Client } from "@modelcontextprotocol/client"
 import { decodeJwt } from "jose"
 import { z } from "zod"
 import { connect, intentSchema, launchBrowser, refusal, serve, serveCallback, signIn, startId, step, tool, type Id, type OAuthSession } from "../index"
-import { startToolboxStack, toolboxResource as resource } from "../toolbox"
+import { startToolboxStack, toolboxResource as resource, toolboxScopes } from "../toolbox"
 
 const callback = "http://127.0.0.1:47603/callback"
 const clientId = "toolbox-browser"
@@ -61,7 +60,7 @@ const events = (organisation: string) => query<Event>`select kind, outcome, capa
 beforeAll(async () => {
   id = await startId({ tenants: tenants.map(({ slug, signIns }) => ({ slug, signIns })) })
   const { admin } = id
-  // The resource allows only `toolbox` and `offline_access`: enabling an organisation widens it to the providers' grant strings.
+  // The resource allows every grant string of the Toolbox's hub, as the deploy's register Job registers it.
   stack = await startToolboxStack(id, { hosts: [{ clientId, redirectUri: callback }, { clientId: metaClientId, redirectUri: callback }], database: "answerable_toolbox_acceptance", fetch: counted })
   db = stack.db
   const { toolbox } = stack
@@ -73,13 +72,12 @@ beforeAll(async () => {
   serve(47_604, toolbox.fetch)
   serveCallback(callback)
   // The catalogue is the ceiling: gamma may use e2e but has no entitlement to any of it until J3. Alpha also signs in through the meta host client.
-  step("Enabling the Toolbox for each organisation through its admin API, then entitling members and setting the meta host client")
+  step("Enabling the Toolbox for each organisation as toolbox_enable does, then entitling members and setting the meta host client")
   for (const { slug, grants } of tenants) {
     const { organizationId } = tenant(slug)
     const hostClientIds = slug === "toolbox-alpha" ? [clientId, metaClientId] : [clientId]
     // The Toolbox mounts example too; these journeys enable e2e alone.
-    const enabled = await toolboxAdminCall("POST", `/organisations/${organizationId}/enable`, { hostClientIds, providers: ["e2e"] })
-    if (enabled.status !== 200) throw new Error(`Enabling ${slug} answered ${enabled.status}: ${JSON.stringify(enabled.body)}`)
+    await stack.enable(organizationId, hostClientIds, ["e2e"])
     if (grants.length) await admin("POST", `/organizations/${organizationId}/entitlements`, { resource, scopes: grants })
   }
   const host = await toolboxAdminCall("PUT", `/host-clients/${metaClientId}`, { projection: "meta" })
@@ -299,15 +297,13 @@ describe("administration", () => {
     expect(listed).toMatchObject({ status: 200, body: { items: expect.arrayContaining([expect.objectContaining({ id: "e2e", capabilities: expect.arrayContaining([{ identity: "e2e/records.show", version: "2026-09-29", kind: "read", risk: null, title: "Test records" }]) })]) } })
   })
 
-  test("the enable calls left the Toolbox resource allowing the providers' grant strings and linked to the host client; a repeat reports everything as existing and changes nothing in ID", async () => {
+  test("the Toolbox resource allows every grant string of the hub and enabling linked it to the host clients; enabling again makes nothing and changes nothing in ID", async () => {
     const resourcePath = `/resources/${encodeURIComponent(resource)}`
-    expect(await held(resourcePath)).toMatchObject({ allowedScopes: allowedScopes(stack.providers.filter(provider => provider.id === "e2e")), clients: expect.arrayContaining([clientId, metaClientId]) })
+    expect(await held(resourcePath)).toMatchObject({ allowedScopes: [...toolboxScopes], clients: expect.arrayContaining([clientId, metaClientId]) })
     const state = async () => ({ resource: await held(resourcePath), capabilities: await held(`/organizations/${alpha()}/capabilities`), entitlements: await held(`/organizations/${alpha()}/entitlements`) })
     const before = await state()
-    step("toolbox-alpha: calling the enable operation a second time")
-    const again = await toolboxAdminCall("POST", `/organisations/${alpha()}/enable`, { hostClientIds: [clientId], providers: ["e2e"] })
-    expect(again).toMatchObject({ status: 200, body: { organisation_id: alpha(), created: [] } })
-    expect(again.body.existing).toHaveLength(9)
+    step("toolbox-alpha: enabling a second time")
+    expect(await stack.enable(alpha(), [clientId], ["e2e"])).toEqual({ made: [], enabled: [] })
     expect(await state()).toEqual(before)
   })
 

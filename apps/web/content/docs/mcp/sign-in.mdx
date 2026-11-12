@@ -42,7 +42,7 @@ These are the only manual steps, and they are deliberate: a business decision, n
 
 **For an MCP in the Toolbox:**
 
-1. **`toolbox_enable`** for the organisation, with `providers` `["acme"]` and `hostClientIds` `["claude-code-toolbox"]`. It lets the organisation use the MCP at all, and teaches Answerable ID to accept its grant strings.
+1. **`toolbox_enable`** for the organisation, with `providers` `["acme"]` and `hostClientIds` `["claude-code-toolbox"]`. It lets the organisation use the MCP at all. Answerable ID accepts the MCP's grant strings once the deploy that shipped it has run its register Job; until then `toolbox_enable` answers `PRECONDITION_FAILED` naming them.
 2. **`access_grant`** to the organisation, a group or a person, on the Toolbox's resource, `https://toolbox.<zone>/mcp`, with `scopes` `["acme"]`, or `["acme/notes"]` or `["acme/notes.list"]` for less. In the Toolbox the entries of `scopes` are grant strings.
 
 **For an MCP on its own URL:**

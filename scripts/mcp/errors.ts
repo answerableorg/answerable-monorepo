@@ -321,9 +321,9 @@ export const errors: readonly ErrorRow[] = [
   },
   {
     id: "enable-refused", code: "enable-failed", commands: ["dev"],
-    see: "enable failed: the Toolbox answered 422 unknown_host_client: …",
-    meaning: "The Toolbox's admin API refused to enable the MCP for your organisation, and says why after the status and its code. The code names the cause: `unknown_provider` when the Toolbox does not mount the MCP, `unknown_host_client` when its client is not registered.",
-    action: "Read what the Toolbox answered. For a client that is not registered, run `bun mcp setup`, then `bun mcp dev <name>` again.",
+    see: "enable failed: the Toolbox answered 404 provider_not_found: …",
+    meaning: "The Toolbox's admin API refused to enable the MCP in your organisation's catalogue, and says why after the status and its code: `provider_not_found` when the Toolbox that answered does not mount the MCP.",
+    action: "Read what the Toolbox answered and fix what it names, then run `bun mcp dev <name>` again.",
   },
   {
     id: "toolbox-token-refused", code: "enable-failed", commands: ["dev"],

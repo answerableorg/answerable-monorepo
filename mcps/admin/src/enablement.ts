@@ -1,5 +1,6 @@
-// What Answerable ID needs so that an organisation's people can sign in to a standalone MCP through a host client, as the rows to make. The admin MCP's
-// standalone_enable previews and commits them; bun mcp dev makes them on a developer's machine: one plan, so that the two never differ.
+// What Answerable ID needs so that an organisation's people can sign in to an MCP through a host client, as the rows to make: a standalone MCP's resource,
+// or the Toolbox's with its `toolbox` scope. The admin MCP's standalone_enable and toolbox_enable preview and commit them; bun mcp dev makes them on a
+// developer's machine: one plan, so that they never differ.
 
 /** A capability or an entitlement of ID, as far as the plan reads it. */
 export type Row = { id: string; clientId: string | null; resource: string | null; grantKind?: string; memberId?: string | null; groupId?: string | null; scopes: string[]; status: string }

@@ -1,9 +1,7 @@
 import { createIdVerifier } from "@answerable/auth"
-import type { IdAdmin } from "@answerable/id-admin"
 import { manifest, type IdVerifierConfig, type Provider } from "@answerable/mcp"
 import type { createEvidence, Database } from "@answerable/mcp-postgres"
 import { z } from "zod"
-import { createEnable } from "./admin-enable"
 import { hostClientSettings, listHostClients, overridesSchema, readCatalogue, removeHostClient, writeCatalogue, writeHostClient } from "./catalogue"
 import { parse, Problem } from "./problem"
 
@@ -28,19 +26,18 @@ function decode(part: string) {
 
 /**
  * The platform-tier admin API, under `/admin/v1`: JSON in and out, callable with a machine client's token for the admin resource that carries
- * `toolbox:admin`. A failure answers `{ error: { code, message } }`. Returns the handler for a request whose path is under `/admin/v1`.
+ * `toolbox:admin`. A failure answers `{ error: { code, message } }`. Returns the handler for a request whose path is under `/admin/v1`. It writes
+ * the Toolbox's own database only: what an organisation needs in Answerable ID, the admin MCP's `toolbox_enable` makes with its own machine client.
  */
-export function createAdmin({ auth, db, providers, id, evidence }: {
+export function createAdmin({ auth, db, providers, evidence }: {
   auth: IdVerifierConfig
   db: Database
   /** The mounted providers, in the order `GET /providers` lists them. */
   providers: readonly Provider[]
-  id: IdAdmin
   evidence: ReturnType<typeof createEvidence>
 }) {
   const audience = toolboxAdminResource(auth.resource)
   const verify = createIdVerifier({ ...auth, resource: audience, subjectType: "client" })
-  const enable = createEnable({ db, providers, id, resource: auth.resource })
   // Each mounted provider as its manifest says: its reads and mutations, without the commit tools.
   const offered = new Map(providers.map(provider => [provider.id, {
     id: provider.id,
@@ -68,7 +65,6 @@ export function createAdmin({ auth, db, providers, id, evidence }: {
       items: [...await readCatalogue(db, organisation(organisationId!))].map(([provider_id, entry]) => ({ provider_id, ...entry })),
     })],
     ["PUT", /^\/organisations\/([^/]+)\/catalogue\/([^/]+)$/, async ([organisationId, provider], body) => putCatalogue(organisation(organisationId!), provider!, await body())],
-    ["POST", /^\/organisations\/([^/]+)\/enable$/, async ([organisationId], body) => enable(organisation(organisationId!), await body())],
     ["GET", /^\/organisations\/([^/]+)\/evidence\/verify$/, async ([organisationId]) => evidence.verify(organisation(organisationId!))],
     ["GET", /^\/host-clients$/, async () => ({ items: await listHostClients(db) })],
     ["PUT", /^\/host-clients\/([^/]+)$/, async ([client], body) => writeHostClient(db, client!, parse(hostClientSettings, await body()))],

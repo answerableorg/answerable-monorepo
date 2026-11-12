@@ -127,7 +127,7 @@ test("an MCP that gained a scope since: its resource, client and the organisatio
   expect(id.entitlements(id.organizationId).find(row => row.resource === acme)!.scopes).toEqual(["acme:read", "acme:write"])
 })
 
-test("a Toolbox MCP: starts the Toolbox as mcp-dev, enables the MCP for the organisation through the Toolbox's admin API with mcp-dev's toolbox:admin token, grants its grant string, and says both are local conveniences", async () => {
+test("a Toolbox MCP: starts the Toolbox as mcp-dev, allows its grant strings on the Toolbox's resource, makes toolbox_enable's rows in ID as mcp-dev and enables it in the catalogue with mcp-dev's toolbox:admin token, grants its grant string, and says both are local conveniences", async () => {
   const { id, stack } = await prepare("toolbox")
   const before = writesTo(id).length
   const { code, stdout, stderr } = await dev(stack)
@@ -135,13 +135,20 @@ test("a Toolbox MCP: starts the Toolbox as mcp-dev, enables the MCP for the orga
   expect(stack.started).toHaveLength(1)
   expect(stack.started[0]).toMatchObject({ cwd: join(repository.root, "mcps/toolbox"), stopped: true })
   expect(stack.started[0]!.env).toMatchObject({ TOOLBOX_ID_CLIENT_ID: "mcp-dev", TOOLBOX_ID_CLIENT_SECRET: expect.stringMatching(/^secret-/) })
-  expect(stack.enabled).toEqual([{ organisation: id.organizationId, body: { hostClientIds: ["claude-code-toolbox"], providers: ["acme"] } }])
-  expect(writesTo(id).slice(before)).toEqual([`POST /organizations/${id.organizationId}/entitlements`])
-  expect(id.entitlements(id.organizationId).map(row => [row.clientId, row.memberId, row.groupId, row.resource, row.scopes])).toEqual([[null, null, null, toolbox, ["acme"]]])
+  expect(id.resourceOf(toolbox).allowedScopes).toEqual(["acme", "acme/notes", "acme/notes.list", "offline_access", "toolbox", "toolbox/approve"])
+  expect(stack.enabled).toEqual([{ organisation: id.organizationId, provider: "acme", body: { enabled: true } }])
+  expect(writesTo(id).slice(before)).toEqual([
+    `PUT /clients/claude-code-toolbox/resources/${encodeURIComponent(toolbox)}`,
+    ...Array(4).fill(`POST /organizations/${id.organizationId}/capabilities`),
+    ...Array(3).fill(`POST /organizations/${id.organizationId}/entitlements`),
+  ])
+  expect(id.entitlements(id.organizationId).map(row => [row.clientId, row.memberId, row.groupId, row.resource, row.scopes])).toEqual([
+    ["claude-code-toolbox", null, null, null, ["openid", "offline_access"]], ["claude-code-toolbox", null, null, toolbox, ["toolbox"]], [null, null, null, toolbox, ["acme"]],
+  ])
   expect(lines(stdout())).toEqual([
     "ok      database   schemas acme; the database of the Toolbox",
     "ok      toolbox    serving acme at http://localhost:47400/mcp",
-    "ok      enable     organisation answerable: 2 rows made in ID and the catalogue; acme granted to the organisation",
+    "ok      enable     organisation answerable: 8 rows made in ID and the catalogue; acme granted to the organisation",
     "",
     "acme runs in the Toolbox at http://localhost:47400/mcp, as the tools acme_*.",
     "",
@@ -162,7 +169,8 @@ test("the organisation's entitlement on the Toolbox, which ID keeps one of, is w
   const held = id.entitlement(id.organizationId, { resource: toolbox, scopes: ["beta"] })
   id.resourceOf(toolbox).allowedScopes.push("beta")
   await dev(stack)
-  expect(id.entitlements(id.organizationId)).toHaveLength(1)
+  // Beside the sign-in and toolbox entitlements of claude-code-toolbox, which enabling makes.
+  expect(id.entitlements(id.organizationId).filter(row => row.clientId === null)).toEqual([held])
   expect(held).toMatchObject({ scopes: ["acme", "beta"], revision: 2 })
   const written = writesTo(id).length
   const again = await dev(stack)
@@ -180,10 +188,18 @@ test("a disabled organisation entitlement on the Toolbox stops the step, naming 
   expect(stack.started.every(server => server.stopped)).toBe(true)
 })
 
-test("the Toolbox refusing the enable call, or ID refusing mcp-dev a token for the Toolbox's admin API, is a failed step with what each answered", async () => {
-  const { stack } = await prepare("toolbox", { stack: { refuse: { status: 422, code: "unknown_host_client", message: "Answerable ID has no client claude-code-toolbox; register it first" } } })
+test("a sign-in row of claude-code-toolbox that does not fit stops the step, naming the row and the command to run once it is fixed", async () => {
+  const { id, stack } = await prepare("toolbox")
+  const held = id.entitlement(id.organizationId, { clientId: "claude-code-toolbox", scopes: ["openid", "offline_access"], status: "disabled" })
+  const { code, stderr } = await dev(stack)
+  expect(code).toBe(1)
+  expect(stderr().split("\n")[0]).toBe(`enable failed: Answerable ID already holds the login entitlement of claude-code-toolbox (${held.id}) with status disabled and scopes openid offline_access; enable it, then run bun mcp dev acme again`)
+})
+
+test("the Toolbox refusing the catalogue write, or ID refusing mcp-dev a token for the Toolbox's admin API, is a failed step with what each answered", async () => {
+  const { stack } = await prepare("toolbox", { stack: { refuse: { status: 404, code: "provider_not_found", message: "acme is not mounted in this Toolbox; GET /admin/v1/providers lists what is" } } })
   const refused = await dev(stack)
-  expect([refused.code, refused.stderr().split("\n")[0]]).toEqual([1, "enable failed: the Toolbox answered 422 unknown_host_client: Answerable ID has no client claude-code-toolbox; register it first"])
+  expect([refused.code, refused.stderr().split("\n")[0]]).toEqual([1, "enable failed: the Toolbox answered 404 provider_not_found: acme is not mounted in this Toolbox; GET /admin/v1/providers lists what is"])
   const { id, stack: other } = await prepare("toolbox")
   id.capabilities(id.organizationId).splice(id.capabilities(id.organizationId).findIndex(row => row.resource === "http://localhost:47400/admin"), 1)
   const noToken = await dev(other)

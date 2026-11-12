@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { findBySlug } from "../../../infra/ops/src/admin-api"
 import { definitions } from "../definitions"
 import { readSettings } from "../environment"
-import { scopesOf } from "../generate"
+import { scopesOf, toolboxScopesAt } from "../generate"
 import { refusal, Refusal, runSteps, sh, type Command, type Io, type Problem, type Running, type Step } from "../io"
 import { local } from "../local"
 import { enableInToolbox, giveStandaloneAccess } from "../local-access"
@@ -95,7 +95,7 @@ export const dev: Command = {
         },
         { name: "access", fix: again, run: async () => `organisation ${settings.MCP_DEV_ORGANISATION}: ${await giveStandaloneAccess(call, organisation!, name)}` },
       ] : []),
-      ...(mcp.serve !== "standalone" ? [{ name: "enable", fix: again, run: async () => `organisation ${settings.MCP_DEV_ORGANISATION}: ${await enableInToolbox(io, call, { clientId, clientSecret }, organisation!, name)}` }] : []),
+      ...(mcp.serve !== "standalone" ? [{ name: "enable", fix: again, run: async () => `organisation ${settings.MCP_DEV_ORGANISATION}: ${await enableInToolbox(io, call, { clientId, clientSecret }, organisation!, name, await toolboxScopesAt(root))}` }] : []),
     ]
     let code: number
     try {

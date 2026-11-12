@@ -57,7 +57,7 @@ export async function createToolbox({ mount, pools = {}, auth, origin = new URL(
   const hub = mount.filter(entry => entry.serve !== "standalone")
   const entries = hub.toSorted((a, b) => (a.provider.id < b.provider.id ? -1 : 1)).map(entry => ({ ...entry, provider: ordered(entry.provider) }))
   const mounted = entries.map(entry => entry.provider)
-  const admin = createAdmin({ auth, db, providers: mounted, id, evidence: calls.evidence })
+  const admin = createAdmin({ auth, db, providers: mounted, evidence: calls.evidence })
   const capabilities = mounted.flatMap(provider => provider.tools)
   const authority = perRequest((principal: UserPrincipal) => Promise.all([grants.read(principal), readCatalogue(db, principal.organizationId), readHostClient(db, principal.clientId)])
     .then(([granted, catalogue, host]) => ({ grants: granted, catalogue, host })))

@@ -16,7 +16,7 @@ import { onCleanup } from "./cleanup"
 import { createDatabase, type Id } from "./id"
 import { mcpsDatabase } from "./mcps"
 import { step } from "./step"
-import { toolboxResource, type HostClient } from "./toolbox"
+import { toolboxResource, toolboxScopes, type HostClient } from "./toolbox"
 
 /** The admin MCP's URL, which is the audience of its tokens; it is served on port 47606. */
 export const adminResource = "http://127.0.0.1:47606/mcp"
@@ -31,7 +31,7 @@ const staffRoles = ["team", "admin", "owner"] as const
  * generated list from the shared MCP database, and its audit-log poller drops its grants and profiles.
  * The caller serves the two handlers on ports 47606 and 47604.
  *
- * Registered in ID: the Toolbox's resource and its admin resource, `toolboxHost` as its host client and the Toolbox's machine client; the admin MCP's
+ * Registered in ID: the Toolbox's resource, allowing every grant string of its hub as the deploy's register Job does, and its admin resource, `toolboxHost` as its host client and the Toolbox's machine client; the admin MCP's
  * resource (900-second tokens, allowing `admin` and the three role strings), `adminHost` as its host client, the platform organisation's capabilities and
  * entitlement for it, a group per role holding that role's string, and the admin MCP's machine client with ID's admin resource and the Toolbox's admin resource as audiences.
  * Nobody is staff yet: `groups` gives each role's group id for the caller to fill.
@@ -44,7 +44,7 @@ export async function startAdminStack(id: Id, { adminHost, toolboxHost, fetch }:
   step("Registering the Toolbox, its admin resource, its host client and its machine client")
   // 900-second tokens, where startToolboxStack registers 60: A3 polls the Toolbox's tools/list with the person's one access token for up to 75 seconds
   // after access_revoke and again after access_enable, longer than a 60-second token lives. Whether A3 passes with 60, refreshing in the middle, is untried.
-  await registerResource(admin, { identifier: toolboxResource, scopes: ["toolbox"], accessTokenTtl: 900 })
+  await registerResource(admin, { identifier: toolboxResource, scopes: toolboxScopes, accessTokenTtl: 900 })
   await registerResource(admin, { identifier: toolboxAdmin, scopes: ["toolbox:admin"], accessTokenTtl: 300 })
   await registerClient(admin, { ...toolboxHost, scopes: ["toolbox"] })
   const hub = await registerMachine(admin, platform, "toolbox-hub", { [manifest.adminResource]: ["platform:read", "platform:write"] })

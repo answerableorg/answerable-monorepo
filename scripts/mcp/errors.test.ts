@@ -249,7 +249,7 @@ const scenarios: Record<string, { fix: string; run: () => Promise<Outcome> }> = 
   "enable-refused": {
     fix: "bun mcp dev acme",
     run: async () => {
-      const { root, local } = await developer(toolboxMcp, { refuse: { status: 422, code: "unknown_host_client", message: "Answerable ID has no client claude-code-toolbox; register it first" } })
+      const { root, local } = await developer(toolboxMcp, { refuse: { status: 404, code: "provider_not_found", message: "acme is not mounted in this Toolbox; GET /admin/v1/providers lists what is" } })
       return dev(root, local)
     },
   },

@@ -222,7 +222,8 @@ describe("A2 onboarding through the MCP", () => {
     const tenant = id.manifest.tenants[0]!
     const { receipt } = await change(staffClient, "toolbox_enable", { organizationId: tenant.organizationId, hostClientIds: [toolboxHost.clientId], providers: ["e2e"] })
     const { created, existing } = z.object({ created: z.array(z.string()), existing: z.array(z.string()) }).parse(receipt.results)
-    expect([created.length, existing.length]).toEqual([9, 0])
+    // The host client's link, four capabilities and two entitlements in ID, made by the admin MCP's own machine client, and e2e in the catalogue.
+    expect([created.length, existing.length]).toEqual([8, 0])
     step(`toolbox_enable for ${tenant.slug}: ${created.length} rows made in ID and the catalogue: ${created.join("; ")}`)
   })
 
@@ -269,7 +270,7 @@ describe("A2 onboarding through the MCP", () => {
     const { created, existing } = z.object({ created: z.array(z.string()), existing: z.array(z.string()) }).parse(receipt.results)
     expect(created).toContain("catalogue e2e")
     expect(existing).toContain(`link ${toolboxHost.clientId}`)
-    step(`toolbox_enable for newco: ${created.length} rows made and ${existing.length} found, the host client's link and the resource's grant strings among them`)
+    step(`toolbox_enable for newco: ${created.length} rows made and ${existing.length} found, the host client's link among them`)
     const granted = await change(staffClient, "access_grant", { organizationId: newco.organizationId, principal: { kind: "organization" }, resource: toolboxResource, scopes: ["e2e"] })
     newco.entitlementId = z.uuid().parse(granted.receipt.results.entitlementId)
     await audited(staffClient, granted.receipt)
