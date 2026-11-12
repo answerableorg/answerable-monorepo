@@ -3,6 +3,7 @@ import { createMDX } from "fumadocs-mdx/next"
 
 /** @type {import("next").NextConfig} */
 const config = {
+  poweredByHeader: false,
   // app/global-not-found.tsx: with two root layouts, an unmatched URL has no layout of its own.
   experimental: { globalNotFound: true },
   logging: {
@@ -30,8 +31,11 @@ const config = {
     "@answerable/countries",
     "@answerable/design",
   ],
+  // The content policy has no script-src: a nonce would make every page dynamic. Nothing frames the site or
+  // posts a form elsewhere. The transport policy has no includeSubDomains and no preload: the zone's other
+  // hosts are not this app's to bind.
   async headers() {
-    return [
+    const noindex = [
       "/docs/:path*",
       "/docs.md",
       "/design.md",
@@ -43,6 +47,26 @@ const config = {
       source,
       headers: [{ key: "X-Robots-Tag", value: "noindex, follow" }],
     }))
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+          {
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+          },
+          { key: "Strict-Transport-Security", value: "max-age=63072000" },
+        ],
+      },
+      ...noindex,
+    ]
   },
   // Pages that moved: when the docs were split into Answerable ID, the MCP kit and the Toolbox, and when the MCP
   // quickstart became "Make an MCP". The landing page was built at /new: a temporary redirect, so that the address
