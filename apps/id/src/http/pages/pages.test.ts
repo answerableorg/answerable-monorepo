@@ -661,6 +661,61 @@ test("login refuses a post from another origin before it reads anything", async 
   });
   expect(response.status).toBe(403);
 });
+test("the pages that read the database share one budget of 300 per 10 seconds per client", async () => {
+  let reads = 0;
+  const db = new Proxy(
+    {},
+    {
+      get() {
+        reads++;
+        throw new Error("Database unavailable");
+      },
+    },
+  ) as Database;
+  const { app } = fixture({}, {}, db);
+  const from = (client: string, init: RequestInit = {}) => ({
+    ...init,
+    // The stub provider reads its default header; production reads cf-connecting-ip.
+    headers: { ...init.headers, "x-forwarded-for": client },
+  });
+  const signIn = `answerable-sign-in=${"b".repeat(43)}`;
+  const form = (body: Record<string, string>) => {
+    const { headers, ...rest } = post(body);
+    return { ...rest, headers: { ...headers, cookie: signIn } };
+  };
+  for (let index = 0; index < 300; index++)
+    expect((await app.request("/error", from("198.51.100.70"))).status).toBe(
+      200,
+    );
+  const routes = [
+    ["/error?firm=acme", {}],
+    ["/magic-link?token=token", { headers: { cookie: signIn } }],
+    ["/magic-link", form({ token: "token" })],
+    ["/magic-link/code", form({ code: "12345678" })],
+    ["/connect-directory", { headers: { cookie: signIn } }],
+    ["/connect-directory", form({ code: "12345678" })],
+  ] as const;
+  reads = 0;
+  for (const [path, init] of routes) {
+    const refused = await app.request(path, from("198.51.100.70", init));
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("10");
+    expect(refused.headers.get("cache-control")).toBe("no-store");
+    expect(await refused.text()).toContain("Too many sign-in attempts");
+  }
+  expect(reads).toBe(0);
+  // Another client keeps its own budget, and each of these reads the database.
+  for (const [path, init] of routes) {
+    const before = reads;
+    expect(
+      (await app.request(path, from("198.51.100.71", init))).status,
+    ).not.toBe(429);
+    expect(reads).toBeGreaterThan(before);
+  }
+  // /login keeps its own budget.
+  expect((await app.request("/login", from("198.51.100.70"))).status).toBe(200);
+});
+
 test("other pages do not show the directory footer", async () => {
   for (const path of ["/error", "/security", "/authorize", "/consent"]) {
     const text = await html(await fixture().app.request(path));

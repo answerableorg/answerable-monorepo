@@ -147,6 +147,7 @@ A **client** is the address ID sees for the request: `cf-connecting-ip`. Limits 
 | A link and its code | 30 minutes |
 | Tries at a code, per request | 3. The third wrong code ends the request, its link included |
 | Posts to `/login` | 300 every 10 seconds per client and process |
+| Requests to `/magic-link`, `/magic-link/code`, `/connect-directory` and `/error`, together | 300 every 10 seconds per client and process |
 | Mail waiting to send | 5 at a time, 500 waiting, 22 seconds to finish on shutdown |
 | Addresses per import | 1,000 |
 | A domain check | 5 seconds |
@@ -179,7 +180,7 @@ A **client** is the address ID sees for the request: `cf-connecting-ip`. Limits 
 | That code didn't work | `connect_directory_code_refused` | The code that connects a directory is wrong, used or spent | Check the mail and try again, or sign in with the company account again |
 | Start again | `connect_directory_unavailable` | No code is waiting in this browser | Sign in with the company account again. If they just did, wait a minute |
 | We couldn't connect your company sign-in | `connect_directory_refused` | The person, the firm or its directory changed since the mail | Start again, or ask the administrator |
-| Too many sign-in attempts | `sign_in_rate_limited` | Over 300 posts in 10 seconds from one client to one process | Wait a few seconds, then try again |
+| Too many sign-in attempts | `sign_in_rate_limited` | Over 300 posts to `/login`, or over 300 requests to the link, code, directory-connection and error pages together, in 10 seconds from one client to one process. The status is `429` with `Retry-After: 10` | Wait a few seconds, then try again |
 | We can't send email just now | `magic_link_queue_full` | The queue of mail waiting to send is full | Try again in a minute |
 
 A sign-in that fails inside ID's own call ends with the same friendly page, and ID logs `page_auth_call_failed`. One cause is a race: a person's first directory sign-in and their first link sign-in for a new address arriving together, where one of the two ends this way. Ask again.
