@@ -1,5 +1,5 @@
-# Production on Civo. Terraform applies this file and then its own values: the load balancer's firewall and address, the
-# addresses Traefik trusts for forwarded headers, and originPull.caPem, the origin-pull CA its edge module makes.
+# Production on Civo. Terraform applies this file and then its own values: the load balancer's firewall and address, and
+# originPull.caPem, the origin-pull CA its edge module makes.
 
 # Without Cloudflare's origin-pull CA Traefik would refuse every connection, so an empty caPem fails the render.
 originPull:

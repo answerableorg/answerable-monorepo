@@ -17,7 +17,7 @@ export type RunOptions = {
 export type RunResult = { exitCode: number; stdout: string; stderr: string }
 
 /**
- * The one door to every external program (`sops`, `kubectl`, `helm`).
+ * The one door to every external program (`docker`, `kubectl`, `helm`, `git`).
  * Tests pass a fake; the pipeline passes {@link systemRunner}.
  */
 export type Runner = (argv: readonly string[], options?: RunOptions) => Promise<RunResult>

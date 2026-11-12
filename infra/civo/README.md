@@ -1,6 +1,6 @@
 # Civo infrastructure
 
-Terraform for Answerable's two environments on Civo, each in its own Civo account in LON1 ([D28](../../docs/goals/civo-deploy/decisions.md)). One root, this directory, builds either environment: the network, the cluster, PostgreSQL 17, the load balancer's firewall and address, the platform chart and the objects the application reads, the deploy identity, the Cloudflare zone with its certificates, and the GitHub environment's rules and deploy secrets. Terraform runs from GitHub Actions for both environments; no step needs a person at a terminal. The application itself is deployed by `helm upgrade` from the deploy workflows, not by Terraform.
+Terraform for Answerable's two environments on Civo, each in its own Civo account in LON1 ([D28](../../docs/goals/civo-deploy/decisions.md)). One root, this directory, builds either environment: the network, the cluster, PostgreSQL 17, the load balancer's firewall and address, the platform chart and the objects the application reads, the deploy identity, the Cloudflare zone with its certificates, and the deploy secrets in the GitHub environment. Terraform runs from GitHub Actions for both environments; no step needs a person at a terminal. The application itself is deployed by `helm upgrade` from the deploy workflows, not by Terraform.
 
 ## Layout
 
@@ -175,7 +175,7 @@ infra/civo/terraform.sh <environment> apply -input=false -auto-approve -target=m
 infra/civo/terraform.sh <environment> apply -input=false -auto-approve
 ```
 
-The kubernetes and helm providers are configured from the cluster's kubeconfig, which does not exist until the cluster does, so the targeted apply creates the cluster, the database and the firewalls first. The full apply then creates the rest: the edge and its certificates, the namespaces, the two Secrets, the platform chart, the deployer and the GitHub environment's rules and secrets. Afterwards both steps are no-ops unless something changed; a cluster that is ever replaced needs the targeted step again, which is why it always runs.
+The kubernetes and helm providers are configured from the cluster's kubeconfig, which does not exist until the cluster does, so the targeted apply creates the cluster, the database and the firewalls first. The full apply then creates the rest: the edge and its certificates, the namespaces, the two Secrets, the platform chart, the deployer and the three deploy secrets in the GitHub environment. Afterwards both steps are no-ops unless something changed; a cluster that is ever replaced needs the targeted step again, which is why it always runs.
 
 Then pin the cluster's version: write the version the apply created the cluster with into `kubernetes_version` in `envs/<environment>.tfvars`, in a commit.
 
@@ -206,7 +206,7 @@ Every change is a commit and a workflow run; these are the Terraform arguments t
 - **Plan and apply**: `infra/civo/terraform.sh <environment> plan`, then `apply`. A change in Cloudflare's published ranges shows as a plan diff.
 - **Rotate the deployer token**: `apply -replace=module.deployer.kubernetes_secret_v1.token`. The same apply writes the new `KUBE_TOKEN` to GitHub; deleting the old Secret revokes the old token.
 - **Rotate a certificate**: see [Certificates](#certificates).
-- **Destroy**: the database and the GitHub environment carry `prevent_destroy`; removing it is a reviewed change. The state bucket belongs to the bootstrap workflow, not to this root.
+- **Destroy**: the database carries `prevent_destroy`; removing it is a reviewed change. Terraform does not manage the GitHub environment, only the three secrets it writes into it. The state bucket belongs to the bootstrap workflow, not to this root.
 
 ## Known limits
 

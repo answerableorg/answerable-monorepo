@@ -2,7 +2,7 @@
 
 How to set up, ship, roll back, scale, rotate, restore and destroy Answerable's environments on Civo, from GitHub. Why each piece exists, and what runs where: [`docs/12-deployment.md`](../docs/12-deployment.md).
 
-**Status.** Built and proved locally. Staging has run on Civo (`staging/fourth`, 2026-10-23: [`reports/staging-evidence.md`](../reports/staging-evidence.md)); production has not. Brief [B7a](../docs/goals/civo-deploy/briefs/b7.md) runs this page and corrects it.
+**Status.** Built and proved locally. Staging has run on Civo (`staging/fourth`, 2026-10-23: [`reports/staging-evidence.md`](../reports/staging-evidence.md), and tags up to `staging/ninth` since, not yet recorded there); production has not. Brief [B7a](../docs/goals/civo-deploy/briefs/b7.md) runs this page and corrects it.
 
 **Conventions.** Nothing here is run from a laptop except `git tag`, `gh run watch` and the browser. Every secret lives in a GitHub environment or is generated where it is used; no command on this page prints one. Staging is shown; production is the same with `production` and the zone `answerable.org`.
 
