@@ -166,7 +166,7 @@ The SDK wraps them. It validates the input, records the intent, mints the commit
 | `policy_class` | `agent`, `controlled` or `human`, decided by the hub |
 | `approval` | not stored: prepare returns `{ required, status: not_required \| pending }`, which the policy class gives. **Not yet:** `granted`, `denied`, `url` and `approval_id`, with the `approvals` table |
 | `commit_token_hash` | SHA-256 of the single-use opaque token returned once, prefixed `act_` |
-| `idempotency_key` | **Not yet.** An optional client key; the same key and fingerprint would return the same intent within 24 hours, and a different fingerprint answer `IDEMPOTENCY_KEY_MISMATCH` |
+| `idempotency_key` | **Not yet.** An optional client key; the same key and fingerprint would return the same intent within 24 hours, and a different fingerprint would be refused |
 | `status` | `prepared`, `awaiting_approval`, `committing`, `committed`, `expired`, `stale`, `failed`. **Not yet:** `approved`, `denied`, `cancelled` |
 | `expires_at` | 10 minutes for `agent`, 30 minutes for `controlled`, 24 hours after prepare for `human` (after a granted approval once approvals exist); a capability may shorten these |
 

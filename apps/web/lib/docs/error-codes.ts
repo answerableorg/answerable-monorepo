@@ -45,10 +45,6 @@ const errorMeanings: Record<ErrorCode, Meaning> = {
       "No intent has that id, or it is for a capability version this server does not serve",
     action: "Prepare again",
   },
-  INTENT_CANCELLED: {
-    meaning: "The intent was cancelled",
-    action: "Not yet: intents cannot be cancelled",
-  },
   INTENT_CONSUMED: {
     meaning: "The intent was committed once and that commit failed",
     action: "Prepare again",
@@ -66,17 +62,9 @@ const errorMeanings: Record<ErrorCode, Meaning> = {
       "The intent's class needs the other commit tool, the person's confirmed summary, or a human approval",
     action: "See [approval](/docs/mcp/errors#approval)",
   },
-  APPROVAL_DENIED: {
-    meaning: "A person refused the approval",
-    action: "Not yet: approvals do not exist",
-  },
   COMMIT_IN_PROGRESS: {
     meaning: "Another commit of this intent is running",
     action: "Call again; a finished commit answers with its receipt",
-  },
-  IDEMPOTENCY_KEY_MISMATCH: {
-    meaning: "The same idempotency key came with different input",
-    action: "Not yet: prepare takes no idempotency key",
   },
   RATE_LIMITED: {
     meaning: "A rate limit refused the call",
@@ -102,14 +90,6 @@ const errorMeanings: Record<ErrorCode, Meaning> = {
     meaning: "The tool ran past its `timeoutMs`",
     action:
       "Call again; a commit may still finish, so call the commit tool again for its receipt",
-  },
-  OPERATION_NOT_FOUND: {
-    meaning: "The operation handle is unknown",
-    action: "Not yet: operations do not exist",
-  },
-  OPERATION_EXPIRED: {
-    meaning: "The operation handle is gone",
-    action: "Not yet: operations do not exist",
   },
   INTERNAL: {
     meaning:

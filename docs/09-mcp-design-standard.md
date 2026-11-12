@@ -80,17 +80,16 @@ Every failure is an `isError` result whose single text block is this envelope as
 | `PRECONDITION_FAILED` | The system state does not allow the operation; `details.preconditions` says what | `after_state_change` |
 | `RESULT_TOO_LARGE` | The result exceeded 100 KiB; narrow the request | `after_fix_input` |
 | `INTENT_STALE` | A target version moved since prepare | `after_reprepare` |
-| `INTENT_EXPIRED`, `INTENT_NOT_FOUND`, `INTENT_CANCELLED`, `INTENT_CONSUMED` | The intent cannot be committed as it is | `after_reprepare` |
+| `INTENT_EXPIRED`, `INTENT_NOT_FOUND`, `INTENT_CONSUMED` | The intent cannot be committed as it is | `after_reprepare` |
 | `COMMIT_TOKEN_INVALID`, `PRINCIPAL_MISMATCH` | The token or the caller does not match the intent | `never` |
 | `APPROVAL_REQUIRED` | The class needs the confirmed commit tool or a human approval; `details.approval.url` when human | `after_approval` |
-| `APPROVAL_DENIED` | A human refused | `never` |
 | `COMMIT_IN_PROGRESS` | Another commit of this intent is running | `after_delay` |
-| `IDEMPOTENCY_KEY_MISMATCH` | Same key, different input | `never` |
 | `RATE_LIMITED`, `BUDGET_EXHAUSTED` | A limit refused the call; `retry.after_ms` | `after_delay` |
 | `UPSTREAM_REJECTED` | The source refused; `details.upstream` carries its code | `never` |
 | `UPSTREAM_UNAVAILABLE`, `TIMEOUT` | The source did not answer in time | `after_delay` |
-| `OPERATION_NOT_FOUND`, `OPERATION_EXPIRED` | The operation handle is unknown or gone | `never` |
 | `INTERNAL` | Unexpected failure; message carries no detail; receipt status `indeterminate` when a commit was in flight | `after_delay` |
+
+**Not yet:** cancelling an intent, a human refusing an approval, an idempotency key on prepare and operation handles (R24), so no code answers them.
 
 Domain-specific codes are allowed as `<PROVIDER>_<CODE>` with a retry policy. A source failure is never a successful empty result. [SDK: `ToolError(code, message, retry, details)`; the server writes every envelope, a definition declares its custom codes in `errors`, which the manifest lists, and an undeclared one answers `INTERNAL`]
 
