@@ -143,7 +143,6 @@
     "web#dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["OAUTH_TEST_*"],
       "env": ["PORT"]
     },
     "@answerable/id#test": {

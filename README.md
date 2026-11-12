@@ -69,7 +69,7 @@ No `.env` is needed, `db:migrate` included: every variable has a local value in 
 
 The kind stack (`bun run infra:test`, cluster `answerable-local`, one per machine) owns `127.0.0.1:48443` (Traefik), `[::1]:48443` (the browser's edge), 47710 (the stand-in company directory) and 47700 (the OAuth callback), which the acceptance's lanes also use, so it runs on its own. The MCP acceptance (`bun run mcp:test:e2e`) owns 47532 (its own disposable PostgreSQL), 47600, 47602, 47603, 47604, 47605 and 47606 (the admin MCP), and never touches the normal ID database; run one acceptance at a time. `bun packages/acceptance/scripts/admin-lane.ts` keeps ID, the admin MCP and the Toolbox up on the same ports, with 47700 and 47701 for Claude Code's callbacks, for trying the onboarding story from Claude Code by hand ([Set up the admin MCP](apps/web/content/docs/admin/setup.mdx)); the admin journeys run the same story headlessly, and the lane cannot run beside the acceptance. Uncommon host ports so nothing clashes with other local projects. Answerable ID itself runs on the host at `http://localhost:47300`. Other commands: `bun run env:down` · `bun run env:reset` (wipes data) · `bun run test` (Answerable ID against Postgres, plus the web unit tests) · `bun run build` · `bun run lint`.
 
-The development-only [OAuth test](apps/web/README.md#local-oauth-test) lets the web app exercise ID as an independent OAuth client at `http://localhost:47100/oauth-test`. ID owns every authentication page at `http://localhost:47300`.
+ID owns every authentication page at `http://localhost:47300`.
 
 ## How we build
 

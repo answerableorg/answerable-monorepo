@@ -6,11 +6,6 @@ const config = {
   poweredByHeader: false,
   // app/global-not-found.tsx: with two root layouts, an unmatched URL has no layout of its own.
   experimental: { globalNotFound: true },
-  logging: {
-    incomingRequests: {
-      ignore: [/^\/api\/oauth-test\/callback(?:\?|$)/],
-    },
-  },
   // AVIF first, WebP for the rest. The landing page magnifies its studio
   // painting, so that one asks for 85. Past 2048 the widths step closely, so a large
   // screen gets near the width it asks for, up to the studio's full 6,000.
