@@ -32,9 +32,14 @@ export function plainText(text: string): string {
  * of sight, which a script that fills every field fills; `elapsedMs` is the
  * milliseconds the browser measured, on its monotonic clock, from opening the
  * form to sending it. No clock is shared with the server, so a device's clock
- * being wrong changes nothing.
+ * being wrong changes nothing. The trap's name is one no browser or password
+ * manager fills on its own (not a name, an address, a phone or a fax number):
+ * a person whose autofill filled it would be dropped without a word.
  */
-export const GUARD_FIELDS = { trap: "fax", elapsedMs: "elapsedMs" } as const
+export const GUARD_FIELDS = {
+  trap: "ref_note",
+  elapsedMs: "elapsedMs",
+} as const
 
 /** A form sent sooner than this after it opened was not filled by a person. */
 export const MIN_FILL_MS = 3000
