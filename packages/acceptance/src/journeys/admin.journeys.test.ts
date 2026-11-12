@@ -733,8 +733,8 @@ describe("A7 evidence", () => {
     const commitsRefused = new Set(rows.filter(row => row.kind === "capability.completed" && row.capability_identity === "admin/commit_confirmed" && row.outcome !== "success").map(row => row.execution_id))
     for (const event of audit) expect(commitsDone.has(event.requestId), `${event.action} ${event.requestId}`).toBe(true)
     for (const event of auditRows.filter(row => row.action === "domain.verification_lost")) expect(commitsRefused.has(event.requestId), `${event.action} ${event.requestId}`).toBe(true)
-    // Each committed intent that wrote to ID wrote once: the Toolbox's enable is the Toolbox's own writes, under its own client.
-    const [{ n }] = await rowsOf(stack.database)<{ n: number }>`select count(*)::int as n from intents where status = 'committed' and capability_identity <> 'admin/toolbox.enable'`
+    // Each committed intent wrote to ID under its own request id, the Toolbox's enable included: the admin MCP makes its rows with this client.
+    const [{ n }] = await rowsOf(stack.database)<{ n: number }>`select count(*)::int as n from intents where status = 'committed'`
     expect(new Set(audit.map(event => event.requestId)).size).toBe(n)
     for (const { tool: name, receipt } of writes.filter(write => write.tool !== "toolbox_enable")) {
       // staff_revoke leaves each group in turn, one operation each.

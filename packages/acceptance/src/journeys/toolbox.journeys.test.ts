@@ -280,8 +280,8 @@ test("the grant cache answered most reads; what the Toolbox asked ID is logged f
   step(`access view latency: median ${latencies[Math.floor(latencies.length / 2)]!.toFixed(1)} ms, max ${latencies.at(-1)!.toFixed(1)} ms`)
   step(`other ID calls: ${asked.tokens} token requests, ${asked.polls} audit-log reads, ${asked.profiles} member and organisation reads; evidence: ${chains!.events} events in ${chains!.organisations} chains`)
   expect(latencies.length).toBeLessThan(reads)
-  // One machine client: a platform:read token for the grants reader, the profiles and the poller, and a platform:read platform:write token for the enable calls.
-  expect(asked.tokens).toBe(2)
+  // One machine client and one token, platform:read, for the grants reader, the profiles and the poller: the Toolbox asks ID for nothing that can write.
+  expect(asked.tokens).toBe(1)
 })
 
 describe("administration", () => {
