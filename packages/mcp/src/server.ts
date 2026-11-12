@@ -1,7 +1,7 @@
 import { createIdVerifier, type IdVerifierConfig, type UserPrincipal } from "@answerable/auth"
 import {
   INTERNAL_ERROR, ProtocolError, createMcpHandler, McpServer, requireBearerAuth, OAuthError, OAuthErrorCode,
-  hostHeaderValidationResponse, originValidationResponse, getOAuthProtectedResourceMetadataUrl, readRequestBody,
+  hostHeaderValidationResponse, originValidationResponse, getOAuthProtectedResourceMetadataUrl, readRequestBody, type AuthInfo,
 } from "@modelcontextprotocol/server"
 import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server"
 import { z } from "zod"
@@ -115,14 +115,16 @@ export type McpServerHandle = {
 
 const intentId = z.uuid()
 const validateOnly = z.boolean().default(false).describe("Return the preview without recording an intent or issuing a commit token; default false")
-const message = z.object({ method: z.string(), params: z.object({ name: z.string().optional() }).optional() })
-type Peeked = { method?: string; name?: string; batch?: true }
+const message = z.object({ id: z.union([z.string(), z.number()]).optional(), method: z.string(), params: z.object({ name: z.string().optional() }).optional() })
+type Peeked = { id?: string | number; method?: string; name?: string; batch?: true }
 // Requests whose answer depends on which tools, and so which views, the caller may use.
 const decided = new Set(["tools/list", "tools/call", "resources/list", "resources/read"])
 // A caller's tool list changes only with its scopes, fixed for a token's life, or with a hub's grants.
 const cacheHints = { "tools/list": { ttlMs: 30_000, cacheScope: "private" as const } }
 // Bun.serve closes a connection idle for 10 seconds by default, so a subscriptions/listen stream sends a keep-alive comment more often than that.
 const keepAliveMs = 5_000
+// The SDK refuses every listen once 1,024 streams are open on a server, whoever opened them, so each person in each organisation may hold this many.
+const listensPerCaller = 4
 
 // The method and tool name of a request, read from a copy of its body, so that `allow` runs only when tools matter and can tell a call from a list;
 // or that the body is a JSON-RPC batch, which the protocol no longer has and which would hide its calls from `allow`.
@@ -131,8 +133,8 @@ async function peek(request: Request): Promise<Peeked> {
     const body = await readRequestBody(request.clone())
     const json = JSON.parse(body.tooLarge ? "" : body.text)
     if (Array.isArray(json)) return { batch: true }
-    const { method, params } = message.parse(json)
-    return { method, name: params?.name }
+    const { id, method, params } = message.parse(json)
+    return { id, method, name: params?.name }
   } catch {
     return {}
   }
@@ -373,6 +375,49 @@ export function createMcpServer(config: McpServerConfig): McpServerHandle {
     return server
     // The SDK answers a failure of the factory or of serving with a bare 500 and reports it only here: the error alone, never the request.
   }, { keepAliveMs, onerror: error => console.error("[mcp] request failed", error) })
+  // Each person's open listen streams, by organisation and user.
+  const listening = new Map<string, number>()
+  /**
+   * Serve a `subscriptions/listen` within the caller's share of the SDK's limit, and end its stream when the token expires, so that no stream outlives
+   * the authority it was opened with. A refusal answers in-band, as the SDK's own limit does.
+   */
+  async function listen(request: Request, authInfo: AuthInfo, id: string | number | undefined) {
+    const { principal } = authInfo.extra as { principal: UserPrincipal }
+    const key = `${principal.organizationId}/${principal.userId}`
+    const open = listening.get(key) ?? 0
+    if (open >= listensPerCaller) {
+      return Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code: -32603, message: `Listen limit reached: you hold ${listensPerCaller} open subscriptions/listen streams on this server; close one first` } })
+    }
+    listening.set(key, open + 1)
+    let held = true
+    const release = () => {
+      if (!held) return
+      held = false
+      const left = listening.get(key)! - 1
+      if (left) listening.set(key, left)
+      else listening.delete(key)
+    }
+    const expired = AbortSignal.timeout(Math.max(0, principal.expiresAt * 1000 - Date.now()))
+    const response = await handler.fetch(new Request(request, { signal: AbortSignal.any([request.signal, expired]) }), { authInfo })
+    if (!response.body || !response.headers.get("Content-Type")?.startsWith("text/event-stream")) {
+      release()
+      return response
+    }
+    const reader = response.body.getReader()
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const { value, done } = await reader.read()
+        if (!done) return controller.enqueue(value)
+        release()
+        controller.close()
+      },
+      cancel(reason) {
+        release()
+        return reader.cancel(reason)
+      },
+    })
+    return new Response(body, { status: response.status, headers: response.headers })
+  }
   return {
     async fetch(request) {
       const pathname = new URL(request.url).pathname
@@ -389,7 +434,10 @@ export function createMcpServer(config: McpServerConfig): McpServerHandle {
         const authInfo = await gate(request)
         const peeked = !(authInfo instanceof Response) && request.method === "POST" ? await peek(request) : {}
         if (!(authInfo instanceof Response) && allow) authInfo.extra = { ...authInfo.extra, request: peeked }
-        response = authInfo instanceof Response ? authInfo : peeked.batch ? batchRefused() : await handler.fetch(request, { authInfo })
+        response = authInfo instanceof Response ? authInfo
+          : peeked.batch ? batchRefused()
+          : peeked.method === "subscriptions/listen" ? await listen(request, authInfo, peeked.id)
+          : await handler.fetch(request, { authInfo })
       }
       response.headers.set("Cache-Control", "no-store")
       return response

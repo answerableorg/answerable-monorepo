@@ -1,4 +1,5 @@
 import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test"
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
 import { z } from "zod"
 import { createMcpServer, defineProvider, defineTool, defineView, definePrompt, defineResource, manifest, ToolError, type Tool, type ToolContext, type Prompt } from "./index"
 import { createTestMcp, errorOf, type TestMcp } from "./testing"
@@ -349,6 +350,63 @@ test("input transforms run once and output is minimised in both representations"
   }
   expect((await client.getPrompt({ name: "date", arguments: { date: "2026-01-01" } })).messages[0]!.content).toEqual({ type: "text", text: "2026-01-01T00:00:00.000Z" })
 })
+test("a person holds at most four listen streams in an organisation, so that one caller cannot fill the server's 1,024 for everyone", async () => {
+  const mcp = await fixture()
+  const [userId, organizationId] = [crypto.randomUUID(), crypto.randomUUID()]
+  const client = await mcp.connect({ scopes: ["test:read"], protocol: "2026-07-28", userId, organizationId })
+  const open = await Promise.all(Array.from({ length: 4 }, () => client.listen({ toolsListChanged: true })))
+  await expect(client.listen({ toolsListChanged: true })).rejects.toThrow("Listen limit reached: you hold 4 open subscriptions/listen streams on this server; close one first")
+  // The same person through another client counts too; another person, and the same person in another organisation, do not.
+  const again = await mcp.connect({ scopes: ["test:read"], protocol: "2026-07-28", userId, organizationId })
+  await expect(again.listen({ toolsListChanged: true })).rejects.toThrow("Listen limit reached")
+  const others = [await mcp.connect({ scopes: ["test:read"], protocol: "2026-07-28", organizationId }), await mcp.connect({ scopes: ["test:read"], protocol: "2026-07-28", userId })]
+  const theirs = await Promise.all(others.map(other => other.listen({ toolsListChanged: true })))
+  await open.pop()!.close()
+  await Bun.sleep(50)
+  const reopened = await again.listen({ toolsListChanged: true })
+  expect(reopened.honoredFilter).toEqual({ toolsListChanged: true })
+  await Promise.all([...open, ...theirs, reopened].map(subscription => subscription.close()))
+})
+
+test("a listen stream ends when the token it was opened with expires", async () => {
+  const mcp = await fixture()
+  const token = await mcp.issuer.sign({ resource, scopes: ["test:read"], claims: { exp: Math.floor(Date.now() / 1000) + 1 } })
+  const client = new Client({ name: "answerable-test", version: "0.1.0" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } })
+  cleanups.push(() => client.close())
+  await client.connect(new StreamableHTTPClientTransport(new URL(resource), { requestInit: { headers: { Authorization: `Bearer ${token}` } }, fetch: mcp.fetch }))
+  const subscription = await client.listen({ toolsListChanged: true })
+  const started = performance.now()
+  expect(await subscription.closed).toBe("remote")
+  expect(performance.now() - started).toBeLessThan(2_500)
+})
+
+test("a listen answered without a stream, or whose stream its reader cancels, gives its place back", async () => {
+  const mcp = await fixture()
+  const token = await mcp.issuer.sign({ resource, scopes: ["test:read"] })
+  const sent: Request[] = []
+  const client = new Client({ name: "answerable-test", version: "0.1.0" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } })
+  cleanups.push(() => client.close())
+  await client.connect(new StreamableHTTPClientTransport(new URL(resource), {
+    requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    fetch: async (input, init) => {
+      const request = new Request(input, init)
+      sent.push(request.clone())
+      return mcp.fetch(request)
+    },
+  }))
+  await (await client.listen({ toolsListChanged: true })).close()
+  const listened = sent.find(request => request.headers.get("Mcp-Method") === "subscriptions/listen")!
+  const body = await listened.json() as { params: Record<string, unknown> }
+  const replay = (params: Record<string, unknown>) => mcp.fetch(new Request(listened.url, { method: "POST", headers: listened.headers, body: JSON.stringify({ ...body, params }) }))
+  // Without notifications the SDK answers -32602 at once, with no stream.
+  for (let i = 0; i < 5; i++) expect(await (await replay({ ...body.params, notifications: undefined })).json()).toMatchObject({ error: { code: -32602 } })
+  for (let i = 0; i < 5; i++) {
+    const response = await replay(body.params)
+    expect(response.headers.get("Content-Type")).toStartWith("text/event-stream")
+    await response.body!.cancel()
+  }
+})
+
 test("health accepts internal hosts while the MCP endpoint rejects them", async () => {
   const mcp = await fixture()
   for (const Host of ["10.0.0.5:47500", "localhost:47500"]) {

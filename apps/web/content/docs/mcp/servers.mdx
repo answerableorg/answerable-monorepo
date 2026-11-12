@@ -58,7 +58,7 @@ The Toolbox and the admin MCP use `createIdProfiles`, each through its own machi
 server.toolsChanged() // every caller listening for changes lists its tools again
 ```
 
-Every server advertises `tools.listChanged: true`. `toolsChanged()` sends `notifications/tools/list_changed` to every caller that listens: a `2026-07-28` host that opened `subscriptions/listen` with `toolsListChanged`, as the official client does when given `listChanged` options. It reaches every listener of the server, whoever they are. A listen stream sends a keep-alive comment every 5 seconds, inside `Bun.serve`'s default 10-second idle timeout, which would otherwise close it.
+Every server advertises `tools.listChanged: true`. `toolsChanged()` sends `notifications/tools/list_changed` to every caller that listens: a `2026-07-28` host that opened `subscriptions/listen` with `toolsListChanged`, as the official client does when given `listChanged` options. It reaches every listener of the server, whoever they are. A listen stream sends a keep-alive comment every 5 seconds, inside `Bun.serve`'s default 10-second idle timeout, which would otherwise close it. A person holds at most four open listen streams on a server in each organisation, since the SDK refuses every listen once 1,024 are open, whoever holds them: a fifth answers `-32603` "Listen limit reached" until one closes. A stream ends when the token it was opened with expires, and the host listens again with its new token.
 
 **2025 hosts: Not yet.** The SDK serves the 2025 revision statelessly, so `GET` answers `405` and no stream can carry a notification; a 2025 host sees a change when it lists again.
 
