@@ -1010,6 +1010,53 @@ test("reusing a rotated refresh token revokes only that native family and record
   ).toBe(1);
 });
 
+test("a replayed refresh token deletes its own grant's stored access tokens and leaves another grant's", async () => {
+  const first = await issue();
+  await issue();
+  const input = {
+    grant_type: "refresh_token",
+    refresh_token: first.refresh_token,
+    resource,
+  };
+  expect((await exchange(input)).status).toBe(200);
+  // The first grant now holds a rotated row and a live one; the other grant one live row.
+  const refreshRows = await fixture.db.select().from(oauthRefreshTokens);
+  const replayed = refreshRows.find((row) => row.revoked)!.referenceId;
+  // A stored access token hangs off its refresh token, as an opaque one does.
+  const stored = new Map<string, string | null>();
+  for (const row of refreshRows.filter((row) => !row.revoked)) {
+    const id = createId();
+    stored.set(id, row.referenceId);
+    await fixture.db.insert(oauthAccessTokens).values({
+      id,
+      token: createId(),
+      clientId: row.clientId,
+      userId: row.userId,
+      referenceId: row.referenceId,
+      refreshId: row.id,
+      scopes: row.scopes,
+      expiresAt: row.expiresAt,
+    });
+  }
+  expect(
+    [...stored.values()].filter((grant) => grant !== replayed),
+  ).toHaveLength(1);
+
+  expect((await exchange(input)).status).toBe(400);
+
+  const kept = await fixture.db
+    .select({ id: oauthAccessTokens.id })
+    .from(oauthAccessTokens);
+  expect(kept.map((row) => stored.get(row.id))).toEqual(
+    [...stored.values()].filter((grant) => grant !== replayed),
+  );
+  expect(
+    (await fixture.db.select().from(oauthRefreshTokens)).map(
+      (row) => row.referenceId,
+    ),
+  ).toEqual([...stored.values()].filter((grant) => grant !== replayed));
+});
+
 test("signed flow forgery, wrong user, duplicate selection and duplicate consent fail closed", async () => {
   const selection = await start();
   const original = selection.search.slice(1);

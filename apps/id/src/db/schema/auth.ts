@@ -31,7 +31,7 @@ import {
   userStatuses,
 } from "./vocabulary.ts";
 
-// Tables in this file are owned by Better Auth 1.7.15 (core and the
+// Tables in this file are owned by Better Auth 1.7.22 (core and the
 // organization plugin). Columns beyond its field set are Answerable's
 // additional fields, declared again in `src/auth.ts`.
 

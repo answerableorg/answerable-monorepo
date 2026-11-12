@@ -54,7 +54,7 @@ The file-migrator adoption in `mcp-postgres`, the Toolbox and the admin MCP (no 
 
 ## Challenged and kept
 
-Better Auth stays at 1.7.15: on 1.7.22 the provider ends a refresh family with a delete that nothing confines to the grant, and four of ID's tests fail (`Q-BETTER-AUTH-1.7.22`). `/health` keeps its detail, because the smoke test reads it (`Q-HEALTH-DETAIL`). The `e2e` and `example` MCPs still ship, by the earlier decision. The design page and its pane, the three root layouts, the decision records and the research notes stay. Every workflow, chart template, Terraform module, script and audit action has a consumer; `knip` was clean before and is clean after.
+Better Auth was first left at 1.7.15, because on 1.7.22 the provider ends a refresh family with deletes by client and user that nothing confines to the grant, and four of ID's tests failed. The owner then asked for the latest: ID runs 1.7.22, `native-refresh-family.ts` confines the provider's three deletes to the grant, and a test fails when a replay removes another grant's stored access token. `/health` keeps its detail, because the smoke test reads it (`Q-HEALTH-DETAIL`). The `e2e` and `example` MCPs still ship, by the earlier decision. The design page and its pane, the three root layouts, the decision records and the research notes stay. Every workflow, chart template, Terraform module, script and audit action has a consumer; `knip` was clean before and is clean after.
 
 ## Not proved here
 

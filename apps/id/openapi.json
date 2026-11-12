@@ -202,7 +202,24 @@
             "bearerAuth": []
           }
         ],
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "disableCookieCache",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "description": "Disable cookie cache and fetch session from database"
+            }
+          },
+          {
+            "name": "disableRefresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "description": "Disable session refresh. Useful for checking session status, without updating the session"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",

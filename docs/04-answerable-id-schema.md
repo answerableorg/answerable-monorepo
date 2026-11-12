@@ -4,7 +4,7 @@ This is the current storage contract. [Design](03-answerable-id.md) describes be
 
 ## Service contract
 
-Bun, Hono and Better Auth 1.7.15 use Postgres for identity, sessions, protocol state, policy, audit and command recovery. The baseline has 26 tables, 21 custom functions, 40 triggers, 22 policies and eleven RLS-enabled tables. The reviewed migrations hold the custom SQL that drizzle-orm cannot express. A [catalogue-equivalence test](../apps/id/src/db/migrations.integration.test.ts) proves the committed migrations build exactly what the schema modules generate plus those files.
+Bun, Hono and Better Auth 1.7.22 use Postgres for identity, sessions, protocol state, policy, audit and command recovery. The baseline has 26 tables, 21 custom functions, 40 triggers, 22 policies and eleven RLS-enabled tables. The reviewed migrations hold the custom SQL that drizzle-orm cannot express. A [catalogue-equivalence test](../apps/id/src/db/migrations.integration.test.ts) proves the committed migrations build exactly what the schema modules generate plus those files.
 
 ## Entity relationship diagram
 
