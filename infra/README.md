@@ -83,7 +83,7 @@ kubectl -n answerable exec deploy/id -c id -- bun -e 'const sql = new Bun.SQL({ 
 
 PostgreSQL's lock table holds `max_locks_per_transaction` × (`max_connections` + `max_prepared_transactions`) locks for all transactions together ([the documentation](https://www.postgresql.org/docs/17/runtime-config-locks.html)): write both numbers in [`reports/staging-evidence.md`](../reports/staging-evidence.md), and if one import of 1,000 would not fit with the others' locks, say so before the first firm is imported. Not yet read.
 
-**Production differs in three places.** The environment is `production`; its first ship is a tag `production/<name>` on a commit staging has shipped, and [nothing waits for your approval yet](#promote-to-production); the Entra redirect URIs are production's.
+**Production differs in three places.** The environment is `production`, which already exists as Vercel's `Production` (names ignore case): set its policy and reviewer as in [Who can ship to production](#who-can-ship-to-production) and run that table before you paste a secret; its first ship is a tag `production/<name>` on a commit staging has shipped; the Entra redirect URIs are production's.
 
 ## Send mail through Postmark
 
@@ -200,9 +200,28 @@ git push origin production/<name>
 gh run watch
 ```
 
-**Not yet: an approval.** Required reviewers are not available to this repository: GitHub Team offers them on public repositories only. So a `production/*` tag ships as soon as its signatures verify, and anyone who can push tags can ship. Settle [`Q-PRODUCTION-APPROVAL`](../docs/02-plan.md#open-register) before production's first tag.
+The run's production job waits for the environment's required reviewer, once [Who can ship to production](#who-can-ship-to-production) passes. Until it does, a `production/*` tag ships as soon as its signatures verify, and anyone who can push a tag can ship ([`Q-PRODUCTION-APPROVAL`](../docs/02-plan.md#open-register)).
 
 The run verifies each image's signature: `deploy-staging.yml` must have signed it on a staging tag of this same commit, which it does only after staging's smoke test passed. Then it applies production's Terraform, deploys exactly the verified digests and smoke-tests production. A commit staging never shipped, or whose staging run failed, is refused. Images signed before 12 November 2026 were signed at build, before their staging deploy: promote a commit whose staging run has the job `Sign the images staging ran`.
+
+### Who can ship to production
+
+**The guards inside a workflow file protect against mistakes, not against a writer.** A tag runs the workflow file of the commit it names, so anyone who can push a commit and a tag can ship a workflow without the check that the commit is on `main`, or without the signature check. A workflow on any branch the `production` environment admits receives every production secret. What protects production is GitHub's settings, on the repository and on the environment. The repository is public, so required reviewers are available on its plan.
+
+**`production` is Vercel's `Production`.** GitHub matches environment names without case, so the workflows' `production` is the environment Vercel's integration created for the web app: one environment, one id, one set of rules. Every setting below therefore lands on Vercel's environment too, and every production secret is pasted there. Vercel reads none of its secrets. Its integration records the web app's deployments in that environment through the Deployments API; after setting the branch policy and the reviewer, check that the next web deploy still appears under the environment's deployments, since whether those rules touch an integration's deployments is not measured here. A name of its own for Answerable's production in the workflows (and in `envs/production.tfvars`) is the alternative; Not yet.
+
+**Paste no production secret before every line below passes.** Each line is what must be true and the read-only call that proves it, run by an owner with `gh`:
+
+| Must be true | Proof |
+| --- | --- |
+| The `production` environment admits only the branch `main` (for `ops.yml` and `bootstrap.yml`) and the tags `production/*` | `gh api repos/answerableorg/answerable-monorepo/environments/production --jq .deployment_branch_policy` answers `{"custom_branch_policies":true,"protected_branches":false}`, and `gh api repos/answerableorg/answerable-monorepo/environments/production/deployment-branch-policies --jq '[.branch_policies[] \| {name, type}]'` lists exactly `main` (`branch`) and `production/*` (`tag`) |
+| A person must approve every production job, and administrators cannot bypass it | `gh api repos/answerableorg/answerable-monorepo/environments/production --jq '{can_admins_bypass, rules: [.protection_rules[] \| {type, prevent_self_review, reviewers: [.reviewers[]?.reviewer.login]}]}'` shows `can_admins_bypass` `false` and a `required_reviewers` rule naming the owner |
+| Only the people the owner names create, move or delete `staging/*` and `production/*` tags | `gh api repos/answerableorg/answerable-monorepo/rulesets --jq '.[] \| {id, name, target, enforcement}'` lists an active ruleset with target `tag`; `gh api repos/answerableorg/answerable-monorepo/rulesets/<id> --jq '{enforcement, include: .conditions.ref_name.include, rules: [.rules[].type], bypass: .bypass_actors}'` includes `refs/tags/staging/*` and `refs/tags/production/*`, the rules `creation`, `update` and `deletion`, and only the named people's role or team as bypass actors |
+| Nobody force-pushes or deletes `main` | `gh api repos/answerableorg/answerable-monorepo/rules/branches/main --jq '[.[].type]'` includes `non_fast_forward` and `deletion` |
+| Every action is pinned to a commit SHA | `gh api repos/answerableorg/answerable-monorepo/actions/permissions --jq .sha_pinning_required` answers `true` |
+| Who can write is who the owner expects: every writer can push a workflow to `main` and so ask for production's secrets, which the reviewer then refuses | `gh api repos/answerableorg/answerable-monorepo/collaborators --jq '.[] \| {login, role_name}'` |
+
+`staging` keeps its policy (`main` and `staging/*`, `gh api repos/answerableorg/answerable-monorepo/environments/staging/deployment-branch-policies`) and needs no reviewer: its secrets reach staging alone. `promote-production.yml` does not read these settings itself: the call needs the Actions read permission, which its verify job's token does not hold. Run the table again after any change to collaborators or rulesets; a step that checked them inside a workflow would be a mistake check too, since a writer can edit it out.
 
 ## Roll back
 
@@ -360,7 +379,7 @@ What each proves: [`docs/12`](../docs/12-deployment.md#testing). On macOS, a Ter
 
 ## Known limits
 
-- **Write access to `main` is access to every secret** of the `main`-scoped environments: a workflow on `main` can use them. Only the owner pushes to `main`; agents push branches, which get CI and no secret; every action is pinned by commit.
+- **Write access to `main` is access to every secret** of the `main`-scoped environments: a workflow on `main` can use them, `staging`'s at once and `production`'s once its reviewer approves. Nothing in the repository limits who pushes to `main`: that is GitHub's settings ([Who can ship to production](#who-can-ship-to-production)). Every action is pinned by commit today; `sha_pinning_required` makes it a rule.
 - **A changed secret has no reviewable history.** GitHub shows when a secret changed, not what; `sops` in git showed which key.
 - **Terraform state holds secrets.** Civo's provider keeps the database administrator's password and the cluster's admin kubeconfig in state; the state also holds the deployer's token, the two private keys of the certificates and the plaintext of the three deploy secrets Terraform writes into the environment. The state bucket's credential is as sensitive as `CIVO_TOKEN`.
 - **Civo's gaps:** no documented etcd encryption, no audit log of API calls, unscoped API keys, a database in beta with undocumented backups and no documented TLS. Each is mitigated as [`docs/12`](../docs/12-deployment.md) says, not closed.

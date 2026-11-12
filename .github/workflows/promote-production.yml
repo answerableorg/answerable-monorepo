@@ -5,8 +5,13 @@ name: Promote production
 # infrastructure, deploys exactly the verified digests and smoke-tests. Production is never rebuilt. deploy-staging.yml
 # signs an image only after staging ran it and passed the smoke test, and the signature must name this commit, so a commit
 # whose staging run failed, or that staging never shipped, is refused. To roll back, tag an earlier commit that staging
-# shipped. Nothing waits for a person: required
-# reviewers are not available to this private repository on GitHub Team (Q-PRODUCTION-APPROVAL, docs/02-plan.md).
+# shipped.
+#
+# These checks catch mistakes; they do not stop a writer, because a tag runs the workflow file of its own commit. What
+# guards production is GitHub's settings: the production environment (Vercel's Production, since names ignore case)
+# admitting only main and production/*, its required reviewer with administrators' bypass off, a tag ruleset on staging/*
+# and production/*, a ruleset on main, and SHA-pinned actions. infra/README.md, Who can ship to production, lists the
+# read-only call that proves each (Q-PRODUCTION-APPROVAL, docs/02-plan.md).
 #
 # What this does and which secrets the production environment holds: infra/pipeline/README.md.
 
