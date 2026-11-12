@@ -501,6 +501,21 @@ describe("integration: federated sign-in", () => {
       expect(await connection.db.select().from(members)).toHaveLength(1);
     });
   }
+  test("an organisation's own client secret is stored sealed and still exchanges the code", async () => {
+    await seedProvider();
+    const [row] = await connection.db
+      .select({ oidcConfig: ssoProviders.oidcConfig })
+      .from(ssoProviders)
+      .where(eq(ssoProviders.kind, "oidc"));
+    expect(JSON.parse(row!.oidcConfig!)).not.toHaveProperty("clientSecret");
+    expect(JSON.parse(row!.oidcConfig!).encryptedClientSecret).toBeString();
+    issuer.enqueue(entraClaims());
+    expect(errorCode((await signIn()).location)).toBeNull();
+    expect(issuer.tokenRequests).toEqual([
+      { clientId: "contoso-client", clientSecret: "secret" },
+    ]);
+    expect(await connection.db.select().from(sessions)).toHaveLength(1);
+  });
   test("ordinary native SSO logins preserve provider revision and timestamp", async () => {
     await seedProvider();
     const [before] = await connection.db

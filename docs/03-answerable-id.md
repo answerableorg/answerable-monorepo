@@ -100,7 +100,7 @@ Registration is platform administration, not permission. Clients require configu
 
 ## Keys and credential custody (non-negotiable)
 
-Retained signing keys use Better Auth application-secret encryption. ID stores no upstream token. Secrets never belong in audit evidence.
+Retained signing keys and organisations' own SSO client secrets use Better Auth application-secret encryption. ID stores no upstream token. Secrets never belong in audit evidence.
 
 The [operations runbook](../apps/id/OPERATIONS.md) covers the keys ID holds and retained-key dependencies; startup refuses application secrets that cannot decrypt the newest signing key. Restore drills are in [the foundation's §6](05-id-enterprise-foundation.md#6-interruption-external-effects-and-money). External secret delivery and emergency rotation require the intended deployment. No KMS-backed signing or secret-store operator has been selected here.
 

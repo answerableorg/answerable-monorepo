@@ -4,6 +4,10 @@ import {
   type Actor,
   type ActorMetadata,
 } from "./actor.ts";
+import {
+  applicationKey,
+  type ApplicationKey,
+} from "../auth/directory-secrets.ts";
 import { setDatabaseScope } from "../db/isolation.ts";
 import type { Database, Executor } from "../db/client.ts";
 import type { Environment } from "../env.ts";
@@ -48,6 +52,8 @@ export type PlatformMutationContext<Access extends "users" | "write"> =
     access: Access;
     actor: Readonly<Actor>;
     tx: Executor;
+    /** Encrypts and decrypts what a command stores sealed: an organisation's own SSO client secret. */
+    applicationKey: ApplicationKey;
   }>;
 export type PlatformUsersContext = PlatformMutationContext<"users">;
 export type PlatformWriteContext = PlatformMutationContext<"write">;
@@ -78,6 +84,7 @@ export async function authorizePlatformMutation<
         access,
         actor: commandActor(identity, metadata),
         tx,
+        applicationKey: applicationKey(caller.environment),
       });
     },
   };

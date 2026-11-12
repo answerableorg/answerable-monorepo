@@ -2,6 +2,7 @@ import {
   platformApplicationFor,
   type PlatformApplicationIds,
 } from "../auth/platform-applications.ts";
+import { openOidcConfig } from "../auth/directory-secrets.ts";
 import { type PlatformWriteContext } from "./platform-context.ts";
 import { type TenantReadContext } from "./tenant-context.ts";
 import { isDeepStrictEqual } from "node:util";
@@ -77,7 +78,7 @@ export async function putSsoProvider(
   );
   const oidc = { ...input.oidc };
   const stored = JSON.parse(
-    existing?.oidcConfig ?? "{}",
+    await openOidcConfig(existing?.oidcConfig ?? "{}", context.applicationKey),
   ) as SsoProviderInput["oidc"];
   if (
     existing &&

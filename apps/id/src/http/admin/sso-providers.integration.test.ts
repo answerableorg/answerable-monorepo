@@ -48,6 +48,10 @@ async function request(
     },
   );
 }
+import {
+  applicationKey,
+  openOidcConfig,
+} from "../../auth/directory-secrets.ts";
 import { routes } from "./sso-providers.ts";
 import { responseSchema } from "../../__tests__/openapi-response.ts";
 const ssoProviderSchema = responseSchema("getSsoProvider", 200);
@@ -60,6 +64,17 @@ const input = {
   domain: " ACME.EXAMPLE.COM ",
   oidc: { clientId: "acme-client", clientSecret: "private-http-secret" },
 };
+/** The stored own secret: never in the column, and opened only with the application key. */
+async function storedSecret(organizationId: string) {
+  const stored = (await lockSsoProvider(fixture.db, organizationId))!
+    .oidcConfig!;
+  expect(JSON.parse(stored)).not.toHaveProperty("clientSecret");
+  for (const secret of [input.oidc.clientSecret, "later-secret"])
+    expect(stored).not.toContain(secret);
+  return JSON.parse(
+    await openOidcConfig(stored, applicationKey(fixture.environment)),
+  ).clientSecret;
+}
 function expectRedacted(value: unknown) {
   expect(JSON.stringify(value)).not.toContain('"clientSecret"');
   expect(JSON.stringify(value)).not.toContain("private-http-secret");
@@ -129,10 +144,7 @@ test("platformAdmin creates and updates without replacing the secret, then delet
     hasClientSecret: true,
   });
   expectRedacted(body);
-  expect(
-    JSON.parse((await lockSsoProvider(fixture.db, org.id))!.oidcConfig!)
-      .clientSecret,
-  ).toBe(input.oidc.clientSecret);
+  expect(await storedSecret(org.id)).toBe(input.oidc.clientSecret);
   expect((await request(org.id, "", "DELETE")).status).toBe(204);
   expect((await request(org.id)).status).toBe(404);
   expect((await request(org.id, "", "DELETE")).status).toBe(404);
@@ -342,7 +354,8 @@ test("SSO retries recover historical redacted results without replacing later cr
   await expectReceipt(fixture.db, replay);
   expect(
     JSON.parse((await lockSsoProvider(fixture.db, org.id))!.oidcConfig!),
-  ).toMatchObject({ clientId: "later-client", clientSecret: "later-secret" });
+  ).toMatchObject({ clientId: "later-client" });
+  expect(await storedSecret(org.id)).toBe("later-secret");
   expect((await command(org.id, "sso-create", "PUT", replacement)).status).toBe(
     409,
   );

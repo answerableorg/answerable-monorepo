@@ -1,5 +1,9 @@
 import type { PlatformApplicationIds } from "../auth/platform-applications.ts";
-import { inPlatformWrite } from "../__tests__/platform-context.ts";
+import {
+  inPlatformWrite,
+  rootAuthority,
+} from "../__tests__/platform-context.ts";
+import { applicationKey, openOidcConfig } from "../auth/directory-secrets.ts";
 import { inTenantRead } from "../__tests__/tenant-command.ts";
 import {
   type Database,
@@ -315,7 +319,13 @@ for (const transition of [
     expect(result.changed).toBe(changed);
     const after = await lockSsoProvider(db, org.id);
     if (!changed) expect(after).toEqual(before);
-    const stored = JSON.parse(after!.oidcConfig!);
+    expect(after!.oidcConfig).not.toContain("replacement-private");
+    const stored = JSON.parse(
+      await openOidcConfig(
+        after!.oidcConfig!,
+        applicationKey(rootAuthority.environment),
+      ),
+    );
     expect(
       stored.clientSecret ===
         (transition === "platform-own-secret"

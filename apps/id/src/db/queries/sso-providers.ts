@@ -10,6 +10,7 @@ import type {
 } from "../../services/platform-context.ts";
 import type { TenantReadContext } from "../../services/tenant-context.ts";
 
+import { sealOidcConfig } from "../../auth/directory-secrets.ts";
 import { createId } from "../../lib/id.ts";
 import type { Executor } from "../client.ts";
 import { ssoProviders } from "../schema/index.ts";
@@ -34,6 +35,8 @@ type PlatformOidc = OidcEndpoints & { credentials: "platform" };
 /** The stored oidc_config: the input's credentials and endpoints with the
  * issuer and the fixed protocol settings serialisation adds. */
 type StoredOidcConfig = (OwnOidc | PlatformOidc) & {
+  /** An own client secret, sealed (auth/directory-secrets.ts); older rows hold `clientSecret`. */
+  encryptedClientSecret?: string;
   issuer: string;
   pkce: boolean;
   overrideUserInfo: boolean;
@@ -104,7 +107,10 @@ export async function createSsoProvider(
           : input.providerId,
       issuer: input.issuer,
       domain: input.domain,
-      oidcConfig: serializeSsoProviderConfig(input),
+      oidcConfig: await sealOidcConfig(
+        serializeSsoProviderConfig(input),
+        context.applicationKey,
+      ),
     })
     .returning();
 
@@ -192,7 +198,10 @@ export async function updateSsoProvider(
     .set({
       issuer: input.issuer,
       domain: input.domain,
-      oidcConfig: serializeSsoProviderConfig(input),
+      oidcConfig: await sealOidcConfig(
+        serializeSsoProviderConfig(input),
+        context.applicationKey,
+      ),
     })
     .where(and(isNull(ssoProviders.deletedAt), eq(ssoProviders.id, id)))
     .returning();
@@ -241,7 +250,9 @@ export function redactSsoProvider(
       jwksEndpoint: config.jwksEndpoint,
       scopes: config.scopes,
       pkce: config.pkce,
-      hasClientSecret: platform ? Boolean(id) : Boolean(config.clientSecret),
+      hasClientSecret: platform
+        ? Boolean(id)
+        : Boolean(config.clientSecret ?? config.encryptedClientSecret),
     },
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

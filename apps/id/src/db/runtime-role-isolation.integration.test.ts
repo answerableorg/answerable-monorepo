@@ -449,6 +449,7 @@ test("restricted domain readers never load another tenant's routing identity", a
 
 test("restricted SSO queries keep tenant projections separate from command secrets", async () => {
   const queries = await import("./queries/sso-providers.ts");
+  const { openOidcConfig } = await import("../auth/directory-secrets.ts");
   const { inTenantRead } = await import("../__tests__/tenant-command.ts");
   const { inPlatformWrite, inPlatformRead } =
     await import("../__tests__/platform-context.ts");
@@ -491,12 +492,17 @@ test("restricted SSO queries keep tenant projections separate from command secre
         discoveryEndpoint: `${tenant.provider.issuer}/.well-known/openid-configuration`,
       }),
     );
-    await inPlatformWrite(runtime.db, async (context) =>
-      expect(
-        (await queries.findSsoProviderForCommand(context, tenant.id))
-          ?.oidcConfig,
-      ).toContain(`secret-${tenant.id}`),
-    );
+    // The runtime login reads the secret only sealed; a command opens it.
+    await inPlatformWrite(runtime.db, async (context) => {
+      const stored = (await queries.findSsoProviderForCommand(
+        context,
+        tenant.id,
+      ))!.oidcConfig!;
+      expect(stored).not.toContain(`secret-${tenant.id}`);
+      expect(await openOidcConfig(stored, context.applicationKey)).toContain(
+        `secret-${tenant.id}`,
+      );
+    });
   }
 });
 

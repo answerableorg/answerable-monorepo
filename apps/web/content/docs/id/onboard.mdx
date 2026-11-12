@@ -328,6 +328,8 @@ curl -X PUT "https://id.answerable.org/api/admin/v1/organizations/$ORG/sso-provi
   }'
 ```
 
+**The secret is stored encrypted.** ID encrypts `clientSecret` with its application secret, as it encrypts its signing keys, so the database and its backups never hold it in the clear. A row saved before 12 November 2026 holds it in the clear until a `PUT` sends `clientSecret` again.
+
 **Defaults.** When scopes are omitted, every row, platform or own credentials, uses `email openid profile`. ID asks no directory for `offline_access` and stores no upstream refresh token.
 
 **Changing the directory.** Creating, replacing or deleting SSO configuration revokes that organisation's directory grants, and a directory session then needs a new sign-in before it can authorise anything. Its [email-link](/docs/id/magic-links) sessions and grants stay: the two ways are independent, and a link still signs in a person whose old directory account no longer matches. Switching between own and platform credentials is a configuration change; for Entra it also changes every user's pairwise `sub`, so existing accounts stop matching. Unchanged configuration preserves grants; restoring an earlier configuration does not restore revoked grants. Other organisations and global browser sessions are preserved. [User OAuth](/docs/id/oauth) checks the accepted account, provider UUID and configuration revision.

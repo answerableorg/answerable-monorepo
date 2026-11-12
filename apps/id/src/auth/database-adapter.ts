@@ -1,3 +1,4 @@
+import { applicationKey, openSsoProviderRow } from "./directory-secrets.ts";
 import {
   hydrateSsoProviderRow,
   type PlatformApplications,
@@ -33,6 +34,17 @@ export function authDatabaseAdapter(
     const adapter = drizzleAdapter(db, { ...config, transaction: true })(
       options,
     );
+    // The key Better Auth itself encrypts with: the same secrets, read from its options.
+    const key = applicationKey({
+      betterAuthSecret: options.secret ?? "",
+      betterAuthSecrets: options.secrets,
+    });
+    // An organisation's own client secret is stored sealed; the plugin reads it open.
+    const provider = async <T>(row: T) =>
+      hydrateSsoProviderRow(
+        await openSsoProviderRow(row, key),
+        platformApplications,
+      );
     // Identity matches stay visible to federation so a tombstone is rejected,
     // never treated as an invitation to create or merge another identity.
     const visible = <
@@ -69,7 +81,7 @@ export function authDatabaseAdapter(
       findOne: async <T>(input: Parameters<typeof adapter.findOne>[0]) => {
         let row = await base.findOne<T>(visible(input));
         if (input.model === "ssoProvider") {
-          row = hydrateSsoProviderRow(row, platformApplications);
+          row = await provider(row);
           await onProviderRead?.();
         }
         return row;
@@ -77,9 +89,7 @@ export function authDatabaseAdapter(
       findMany: async <T>(input: Parameters<typeof adapter.findMany>[0]) => {
         let rows = await base.findMany<T>(visible(input));
         if (input.model === "ssoProvider") {
-          rows = rows.map((row) =>
-            hydrateSsoProviderRow(row, platformApplications),
-          );
+          rows = await Promise.all(rows.map(provider));
           await onProviderRead?.();
         }
         return rows;
@@ -105,9 +115,7 @@ export function authDatabaseAdapter(
             .for("key share", { of: schema.organizations });
         }
         const row = await base.update<T>(input);
-        return input.model === "ssoProvider"
-          ? hydrateSsoProviderRow(row, platformApplications)
-          : row;
+        return input.model === "ssoProvider" ? provider(row) : row;
       },
       count: (input) => base.count(visible(input)),
     });
