@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     "./admin": "./src/admin.ts",
-    "./grants": "./src/grants.ts",
+    "./id": "./src/id.ts",
     "./migrate": "./src/db/migrate.ts",
     "./mounted": "./src/mounted.generated.ts",
     "./toolbox": "./src/toolbox.ts"

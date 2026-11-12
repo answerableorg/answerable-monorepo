@@ -25,7 +25,10 @@ export type ToolboxConfig = {
   /** Where the MCPs served alone are: each is the resource `<origin>/<name>/mcp`, the audience of its tokens. The hub's origin unless given. */
   origin?: string
   db: Database
-  /** ID's admin API as the Toolbox's machine client: `createIdAdmin(config)`, shared with the audit-log poller; it also reads who is calling. */
+  /**
+   * ID's admin API as the Toolbox's machine client, which only reads: `createToolboxId(config)`, shared with the audit-log poller; it also reads
+   * who is calling.
+   */
   id: IdAdmin
   /** Where spans go: `createTracer("answerable-toolbox", endpoint).tracer`, or `createMemoryTracer().tracer` in tests. */
   spans: Tracer

@@ -1,5 +1,4 @@
 // The Toolbox in process, over the test database and a fake ID: members of fresh organisations to call its MCP endpoint, and staff to call its admin API.
-import { createIdAdmin } from "@answerable/id-admin"
 import { createFakeId } from "@answerable/id-admin/testing"
 import { defineMutation, defineProvider, defineTool, type Mount, type Provider } from "@answerable/mcp"
 import { createMemoryTracer, type Serve } from "@answerable/mcp-platform"
@@ -7,6 +6,7 @@ import type { Database } from "@answerable/mcp-postgres"
 import { createTestMcp } from "@answerable/mcp/testing"
 import { z } from "zod"
 import { writeCatalogue } from "../catalogue"
+import { createToolboxId } from "../id"
 import { createToolbox } from "../toolbox"
 
 export const resource = "https://mcp.test/mcp"
@@ -42,7 +42,7 @@ export async function createHub(db: Database, providers?: readonly (Provider | (
   const mount = (providers ?? [(await import("./mcps")).e2e]).map((entry): Mount & { serve?: Serve } => ("provider" in entry ? entry : { provider: entry }))
   let toolbox!: Awaited<ReturnType<typeof createToolbox>>
   const mcp = await createTestMcp(async ({ auth }) => (toolbox = await createToolbox({
-    mount, auth, db, id: createIdAdmin({ ...id.config, ...(secret ? { clientSecret: secret } : {}) }), spans: tracer,
+    mount, auth, db, id: createToolboxId({ ...id.config, ...(secret ? { clientSecret: secret } : {}) }), spans: tracer,
   })))
   async function member(grants: string[], { enable = mount.filter(entry => entry.serve !== "standalone").map(({ provider }) => provider.id), scopes = ["toolbox"] }: { enable?: string[]; scopes?: string[] } = {}) {
     const organizationId = crypto.randomUUID()

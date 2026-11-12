@@ -1,7 +1,7 @@
-import { createIdAdmin } from "@answerable/id-admin"
 import { createTracer, mcpDatabases, startAuditPoller } from "@answerable/mcp-platform"
 import { assertRuntimeRole, connect, servingPool } from "@answerable/mcp-postgres"
 import { readToolboxEnvironment } from "./environment"
+import { createToolboxId } from "./id"
 import { mounted } from "./mounted.generated"
 import { createToolbox } from "./toolbox"
 
@@ -16,7 +16,7 @@ await Promise.all([assertRuntimeRole(db), mcps.assert()]).catch(async (error: Er
   process.exit(1)
 })
 const telemetry = createTracer("answerable-toolbox", otlpEndpoint)
-const id = createIdAdmin(idConfig)
+const id = createToolboxId(idConfig)
 const toolbox = await createToolbox({ mount: mcps.mount, pools: mcps.pools, auth, origin, db, id, spans: telemetry.tracer })
 const poller = startAuditPoller({ id, caches: [toolbox.grants, toolbox.profiles] })
 const server = Bun.serve({ hostname, port, fetch: toolbox.fetch })

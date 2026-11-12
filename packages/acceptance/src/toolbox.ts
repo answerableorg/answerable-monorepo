@@ -4,6 +4,7 @@ import { createIdAdmin, type IdConfig } from "@answerable/id-admin"
 import { createMemoryTracer, mcpDatabases, startAuditPoller } from "@answerable/mcp-platform"
 import { assertRuntimeRole, configureRuntimeRole } from "@answerable/mcp-postgres"
 import { toolboxAdminResource } from "@answerable/mcp-toolbox/admin"
+import { createToolboxId } from "@answerable/mcp-toolbox/id"
 import { migrate, runtimeGrants } from "@answerable/mcp-toolbox/migrate"
 import { mounted } from "@answerable/mcp-toolbox/mounted"
 import { createToolbox } from "@answerable/mcp-toolbox/toolbox"
@@ -41,7 +42,7 @@ export async function prepareToolbox(id: Id, { database, fetch }: { database: st
   const organisations = z.object({ items: z.array(z.object({ id: z.uuid(), slug: z.string() })) }).parse(await admin("GET", "/organizations?q=answerable"))
   const platform = organisations.items.find(organisation => organisation.slug === "answerable")!
   const hub = await registerMachine(admin, platform.id, "toolbox-hub", { [manifest.adminResource]: ["platform:read"] })
-  const machine = createIdAdmin({ issuer: manifest.idOrigin, adminResource: manifest.adminResource, ...hub, fetch })
+  const machine = createToolboxId({ issuer: manifest.idOrigin, adminResource: manifest.adminResource, ...hub, fetch })
 
   step(`Creating and migrating ${database}, to serve ${mounted.map(({ provider }) => provider.id).join(" and ")} as the Toolbox's runtime logins`)
   const { owner, runtime, role } = await createDatabase(database)

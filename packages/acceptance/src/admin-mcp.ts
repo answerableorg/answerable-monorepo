@@ -7,6 +7,7 @@ import { readPlatform } from "@answerable/mcp-admin/platform"
 import { createMemoryTracer, mcpDatabases, startAuditPoller } from "@answerable/mcp-platform"
 import { assertRuntimeRole, configureRuntimeRole, runtimeGrants } from "@answerable/mcp-postgres"
 import { toolboxAdminResource } from "@answerable/mcp-toolbox/admin"
+import { createToolboxId } from "@answerable/mcp-toolbox/id"
 import { migrate as migrateToolbox, runtimeGrants as toolboxGrants } from "@answerable/mcp-toolbox/migrate"
 import { mounted } from "@answerable/mcp-toolbox/mounted"
 import { createToolbox } from "@answerable/mcp-toolbox/toolbox"
@@ -82,7 +83,7 @@ export async function startAdminStack(id: Id, { adminHost, toolboxHost, fetch }:
   const mcps = mcpDatabases(mounted, { shared: (await mcpsDatabase()).toolbox, own: {} })
   onCleanup(() => mcps.close())
   await mcps.assert()
-  const hubIds = createIdAdmin({ issuer: manifest.idOrigin, adminResource: manifest.adminResource, ...hub })
+  const hubIds = createToolboxId({ issuer: manifest.idOrigin, adminResource: manifest.adminResource, ...hub })
   const toolbox = await createToolbox({ mount: mcps.mount, pools: mcps.pools, auth: { issuer: manifest.idOrigin, resource: toolboxResource }, db: toolboxDb.runtime, id: hubIds, spans: createMemoryTracer().tracer })
   const poller = startAuditPoller({ id: hubIds, caches: [toolbox.grants, toolbox.profiles] })
   onCleanup(() => poller.stop())

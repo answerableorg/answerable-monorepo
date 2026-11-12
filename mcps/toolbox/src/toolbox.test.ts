@@ -1,5 +1,4 @@
 import { afterAll, afterEach, expect, spyOn, test } from "bun:test"
-import { createIdAdmin } from "@answerable/id-admin"
 import { createFakeId } from "@answerable/id-admin/testing"
 import { defineMutation, defineProvider, defineTool, type Mount, type Provider } from "@answerable/mcp"
 import { errorOf } from "@answerable/mcp/testing"
@@ -8,6 +7,7 @@ import { mcpPostgresTestConfig, rowsOf } from "@answerable/mcp-postgres/testing"
 import { Client, Pool } from "pg"
 import { z } from "zod"
 import { writeCatalogue } from "./catalogue"
+import { createToolboxId } from "./id"
 import { createMemoryTracer } from "@answerable/mcp-platform"
 import { serving } from "./test/database"
 import { createHub, names, resource, type Client as McpClient, type Hub } from "./test/hub"
@@ -240,7 +240,7 @@ test("health lists the mounted providers, is ready while the Toolbox's own datab
   const own = connect(login.url, { max: 1 })
   const unreachable = new Pool({ connectionString: "postgres://nobody:nothing@127.0.0.1:1/none", max: 1 })
   const mount = [e2e, bulk].map(entry => ("provider" in entry ? entry : { provider: entry }))
-  const toolboxOf = (mcps: Pool) => createToolbox({ mount, pools: { mcps }, auth: { issuer: "https://id.test", resource }, db: own, id: createIdAdmin(createFakeId().config), spans: createMemoryTracer().tracer })
+  const toolboxOf = (mcps: Pool) => createToolbox({ mount, pools: { mcps }, auth: { issuer: "https://id.test", resource }, db: own, id: createToolboxId(createFakeId().config), spans: createMemoryTracer().tracer })
   const health = async (toolbox: Awaited<ReturnType<typeof createToolbox>>) => {
     const response = await toolbox.fetch(new Request("https://mcp.test/health"))
     return [response.status, await response.json()]
