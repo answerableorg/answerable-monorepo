@@ -45,11 +45,12 @@ export function CohortForm() {
   )
   const [step, setStep] = useState<1 | 2>(1)
   const [emailError, setEmailError] = useState<string>()
-  // When the browser had the form, never set on the server: the page is static.
-  // A form posted before this runs carries none, and the server drops it.
-  const openedAt = useRef("")
+  // When the browser had the form, on its monotonic clock: the page is static,
+  // and the device's wall clock may be wrong. A form posted before this runs
+  // carries no elapsed time, and the server accepts it.
+  const openedAt = useRef<number>(undefined)
   useEffect(() => {
-    openedAt.current = String(Date.now())
+    openedAt.current = performance.now()
   }, [])
   const formRef = useRef<HTMLFormElement>(null)
   const doneRef = useRef<HTMLParagraphElement>(null)
@@ -105,7 +106,12 @@ export function CohortForm() {
     const staged = document.documentElement.hasAttribute("data-stage")
     if (staged && step === 1) return next()
     const data = new FormData(event.currentTarget)
-    data.set(GUARD_FIELDS.openedAt, openedAt.current)
+    if (openedAt.current !== undefined) {
+      data.set(
+        GUARD_FIELDS.elapsedMs,
+        String(Math.round(performance.now() - openedAt.current)),
+      )
+    }
     startTransition(() => formAction(data))
   }
 

@@ -23,7 +23,7 @@ export type WaitlistInput = {
   /** Required where the form asks for it, the founding cohort's. */
   business?: { name: string; headcount: string }
   /** The values of the form's two guard fields, `GUARD_FIELDS`. */
-  guard: { trap: string; openedAt: string }
+  guard: { trap: string; elapsedMs: string }
 }
 type WaitlistErrors = Partial<
   Record<
@@ -88,7 +88,7 @@ export async function submitWaitlist(
   if (Object.keys(errors).length || !country) return { status: "error", errors }
 
   // Answers as a success does and writes nothing, so a script learns nothing.
-  if (automated(input.guard, (deps.now ?? (() => new Date()))())) {
+  if (automated(input.guard)) {
     log.info(line("guard_tripped", {}))
     return { status: "success", email }
   }
@@ -135,12 +135,19 @@ export async function submitWaitlist(
   }
 }
 
-/** A filled trap, or a form not opened, or opened a moment ago or in the future. */
-function automated(guard: WaitlistInput["guard"], now: Date): boolean {
+/**
+ * A filled trap, or a time the browser reported that is under the minimum. A
+ * missing or unreadable time passes: a form posted before the page's script ran
+ * is a person's too, and the trap still applies. This stops a form-filler that
+ * fills every field at once; a script written for this form leaves the trap
+ * empty and reports a long time, so the firewall's rate rule is the control
+ * there.
+ */
+function automated(guard: WaitlistInput["guard"]): boolean {
   if (guard.trap !== "") return true
-  const openedAt = Number(guard.openedAt)
-  if (!guard.openedAt.trim() || !Number.isFinite(openedAt)) return true
-  return now.getTime() - openedAt < MIN_FILL_MS
+  if (!guard.elapsedMs.trim()) return false
+  const elapsedMs = Number(guard.elapsedMs)
+  return Number.isFinite(elapsedMs) && elapsedMs < MIN_FILL_MS
 }
 
 type LogFields = Record<string, string | number | undefined>

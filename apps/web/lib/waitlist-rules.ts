@@ -29,11 +29,12 @@ export function plainText(text: string): string {
 
 /**
  * The two form fields a person never sees or fills. `trap` is a text input out
- * of sight, which a script that fills every field fills; `openedAt` is the
- * time in milliseconds at which the browser opened the form, which a script
- * that posts without loading the page leaves out.
+ * of sight, which a script that fills every field fills; `elapsedMs` is the
+ * milliseconds the browser measured, on its monotonic clock, from opening the
+ * form to sending it. No clock is shared with the server, so a device's clock
+ * being wrong changes nothing.
  */
-export const GUARD_FIELDS = { trap: "fax", openedAt: "openedAt" } as const
+export const GUARD_FIELDS = { trap: "fax", elapsedMs: "elapsedMs" } as const
 
 /** A form sent sooner than this after it opened was not filled by a person. */
 export const MIN_FILL_MS = 3000

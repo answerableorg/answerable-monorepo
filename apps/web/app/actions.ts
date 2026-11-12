@@ -13,7 +13,7 @@ export async function joinFoundingCohort(
     fullName: String(formData.get("fullName") ?? ""),
     guard: {
       trap: String(formData.get(GUARD_FIELDS.trap) ?? ""),
-      openedAt: String(formData.get(GUARD_FIELDS.openedAt) ?? ""),
+      elapsedMs: String(formData.get(GUARD_FIELDS.elapsedMs) ?? ""),
     },
     business: {
       name: String(formData.get("businessName") ?? ""),
