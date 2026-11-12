@@ -239,6 +239,29 @@ describe("unit: waitlist", () => {
       expect(h.opened).toEqual([])
     })
   })
+  test("no production log line holds the address, only a hash of it", async () => {
+    const address = "person@firm.example"
+    const failing = harness({ fail: { loadHeaderRow: new Error("boom") } })
+    await failing.submit(address)
+    const unconfigured = harness(undefined, { NODE_ENV: "production" })
+    await unconfigured.submit(address)
+    const created = harness({})
+    await created.submit(address)
+    const lines = [
+      ...failing.lines("error"),
+      ...unconfigured.lines("error"),
+      ...created.lines("info"),
+    ]
+    expect(lines).toHaveLength(3)
+    for (const logged of lines) {
+      expect(logged).not.toContain("person")
+      expect(logged).not.toContain("firm.example")
+      expect(logged).toMatch(/"emailHash":"[0-9a-f]{12}"/)
+    }
+    expect(
+      new Set(lines.map((l) => /"emailHash":"(\w+)"/.exec(l)?.[1])).size,
+    ).toBe(1)
+  })
   test("never logs the business name or the full name", async () => {
     const h = harness({ fail: { loadHeaderRow: new Error("boom") } })
     expect(await h.submit("a@b.com", "GB", acme, ada)).toEqual(failed)
@@ -260,7 +283,7 @@ describe("unit: waitlist", () => {
     })
     expect(await h.submit("a@b.com")).toEqual(success)
     expect(h.lines("info")).toEqual([
-      '[waitlist] sheets_header_extended {"email":"a@b.com","columns":"country_code,country_name,business_name,business_headcount,full_name"}',
+      '[waitlist] sheets_header_extended {"emailHash":"fb98d44ad750","columns":"country_code,country_name,business_name,business_headcount,full_name"}',
     ])
   })
   test("stores trimmed lowercase addresses", async () => {
@@ -284,7 +307,7 @@ describe("unit: waitlist", () => {
     const h = harness(undefined, { NODE_ENV: "production" })
     expect(await h.submit("a@b.com")).toEqual(failed)
     expect(h.lines("error")).toEqual([
-      '[waitlist] sheets_not_configured {"email":"a@b.com"}',
+      '[waitlist] sheets_not_configured {"emailHash":"fb98d44ad750"}',
     ])
     expect(h.log.info).not.toHaveBeenCalled()
     expect(h.opened).toEqual([])
@@ -296,7 +319,7 @@ describe("unit: waitlist", () => {
     })
     expect(await h.submit("a@b.com")).toEqual(failed)
     expect(h.lines("error")).toEqual([
-      '[waitlist] sheets_not_configured {"email":"a@b.com"}',
+      '[waitlist] sheets_not_configured {"emailHash":"fb98d44ad750"}',
     ])
     expect(h.opened).toEqual([])
   })
@@ -311,7 +334,7 @@ describe("unit: waitlist", () => {
     const h = harness({})
     expect(await h.submit("a@b.com")).toEqual(success)
     expect(h.lines("info")).toEqual([
-      '[waitlist] sheets_header_created {"email":"a@b.com"}',
+      '[waitlist] sheets_header_created {"emailHash":"fb98d44ad750"}',
     ])
     expect(h.log.error).not.toHaveBeenCalled()
   })
@@ -387,14 +410,14 @@ describe("unit: waitlist", () => {
     })
     expect(await h.submit("a@b.com")).toEqual(failed)
     expect(h.lines("error")).toEqual([
-      '[waitlist] sheets_failed {"email":"a@b.com","message":"Google API error - [403] The caller does not have permission"}',
+      '[waitlist] sheets_failed {"emailHash":"fb98d44ad750","message":"Google API error - [403] The caller does not have permission"}',
     ])
   })
   test("truncates logged error messages to 500 characters", async () => {
     const h = harness({ fail: { loadHeaderRow: new Error("x".repeat(700)) } })
     expect(await h.submit("a@b.com")).toEqual(failed)
     expect(h.lines("error")).toEqual([
-      `[waitlist] sheets_failed ${JSON.stringify({ email: "a@b.com", message: "x".repeat(500) })}`,
+      `[waitlist] sheets_failed ${JSON.stringify({ emailHash: "fb98d44ad750", message: "x".repeat(500) })}`,
     ])
   })
   test("redacts every private key occurrence before truncating", async () => {
@@ -407,7 +430,7 @@ describe("unit: waitlist", () => {
     })
     expect(await h.submit("a@b.com")).toEqual(failed)
     expect(h.lines("error")).toEqual([
-      '[waitlist] sheets_failed {"email":"a@b.com","message":"before [redacted] middle [redacted] after"}',
+      '[waitlist] sheets_failed {"emailHash":"fb98d44ad750","message":"before [redacted] middle [redacted] after"}',
     ])
     expect(h.lines("error").join()).not.toContain("TESTKEY")
     expect(h.opened[0].privateKey).toBe(key)
@@ -416,7 +439,7 @@ describe("unit: waitlist", () => {
     const h = harness({ fail: { loadHeaderRow: "boom" } })
     expect(await h.submit("a@b.com")).toEqual(failed)
     expect(h.lines("error")).toEqual([
-      '[waitlist] sheets_failed {"email":"a@b.com","message":"boom"}',
+      '[waitlist] sheets_failed {"emailHash":"fb98d44ad750","message":"boom"}',
     ])
   })
 })

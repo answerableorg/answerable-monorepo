@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { findCountry } from "@answerable/countries"
 import { isHeadcount } from "./headcounts"
 import {
@@ -92,10 +93,11 @@ export async function submitWaitlist(
     return { status: "success", email }
   }
 
+  const emailHash = hashOf(email)
   const config = parseSheetsConfig(env)
   if (!config) {
     if (env.NODE_ENV === "production") {
-      log.error(line("sheets_not_configured", { email }))
+      log.error(line("sheets_not_configured", { emailHash }))
       return { status: "error", message: MESSAGES.failed }
     }
     log.info(line("sheets_not_configured_signup_logged_only", { email }))
@@ -111,11 +113,12 @@ export async function submitWaitlist(
       businessName,
       businessHeadcount: input.business?.headcount,
     })
-    if (result.headerCreated) log.info(line("sheets_header_created", { email }))
+    if (result.headerCreated)
+      log.info(line("sheets_header_created", { emailHash }))
     if (result.columnsAdded.length) {
       log.info(
         line("sheets_header_extended", {
-          email,
+          emailHash,
           columns: result.columnsAdded.join(","),
         }),
       )
@@ -124,7 +127,7 @@ export async function submitWaitlist(
   } catch (error) {
     log.error(
       line("sheets_failed", {
-        email,
+        emailHash,
         message: describe(error, config.privateKey),
       }),
     )
@@ -142,7 +145,16 @@ function automated(guard: WaitlistInput["guard"], now: Date): boolean {
 
 type LogFields = Record<string, string | number | undefined>
 
-/** One line per event, JSON fields, so any log sink keeps the address. */
+/**
+ * What a log line says of an address: enough to tell whether two lines are one
+ * person, too little to read it back. Runtime logs outlive the sheet's access
+ * rules, so they never hold the address itself.
+ */
+function hashOf(email: string): string {
+  return createHash("sha256").update(email).digest("hex").slice(0, 12)
+}
+
+/** One line per event, JSON fields, so any log sink can parse it. */
 function line(event: string, fields: LogFields): string {
   return `[waitlist] ${event} ${JSON.stringify(fields)}`
 }
