@@ -3339,7 +3339,7 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991,
-                "description": "How many mails an address gets in a day"
+                "description": "How many mails an address gets in a day; a browser that has already signed in with the address is mailed past it"
               }
             },
             "required": [
