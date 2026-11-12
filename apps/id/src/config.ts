@@ -66,7 +66,7 @@ export const idConfig = defineConfig(
       // One spelling of the origin, without a trailing slash, for the issuer, the pages and the admin audience.
       schema: z.url().transform((url) => url.replace(/\/+$/, "")),
       local: "http://localhost:47300",
-      doc: "ID's origin: the issuer, the pages' origin, the base of the admin API's audience and the domain sign-in mail comes from",
+      doc: "ID's origin: the issuer, the pages' origin, the base of the admin API's audience and the domain sign-in mail comes from; production requires https",
       source: "chart",
     },
     BETTER_AUTH_SECRET: {
@@ -118,7 +118,7 @@ export const idConfig = defineConfig(
     BETTER_AUTH_TRUSTED_ORIGINS: {
       schema: z.string(),
       fallback: "",
-      doc: "Origins trusted besides ID's own, separated by commas: browser origins and identity-provider endpoints; production requires them",
+      doc: "Origins trusted besides ID's own, separated by commas: browser origins and identity-provider endpoints; production requires them, each an exact origin with no wildcard",
       source: "chart",
     },
     ROOT_ADMIN_SECRET: {
@@ -166,6 +166,9 @@ export const idConfig = defineConfig(
       if (environment.NODE_ENV !== "production") return;
       if (environment.POSTMARK_SERVER_TOKEN === undefined)
         issue("POSTMARK_SERVER_TOKEN", "Required in production");
+      // The issuer, the session cookies' origin and every link ID mails.
+      if (new URL(environment.BETTER_AUTH_URL).protocol !== "https:")
+        issue("BETTER_AUTH_URL", "Required to be https in production");
       // The token travels in this request: no plain http, whoever sets the variable.
       if (
         environment.POSTMARK_API_URL !== undefined &&
@@ -178,8 +181,11 @@ export const idConfig = defineConfig(
       if (
         origins.some((origin) => {
           try {
+            // Better Auth reads `*` as a wildcard: one entry would trust every subdomain.
             return (
-              new URL(origin).origin !== origin || !/^https?:/.test(origin)
+              new URL(origin).origin !== origin ||
+              !/^https?:/.test(origin) ||
+              origin.includes("*")
             );
           } catch {
             return true;

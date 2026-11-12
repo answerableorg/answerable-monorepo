@@ -23,6 +23,7 @@ afterEach(() => {
 const production = {
   ...requiredEnvironment,
   NODE_ENV: "production",
+  BETTER_AUTH_URL: "https://id.example.com",
   BETTER_AUTH_TRUSTED_ORIGINS: "https://auth.example.com",
   POSTMARK_SERVER_TOKEN: "postmark-token",
 };
@@ -56,12 +57,12 @@ describe("unit: environment", () => {
       port: 47_300,
       hostname: "127.0.0.1",
       databaseUrl: requiredEnvironment.DATABASE_URL,
-      betterAuthUrl: requiredEnvironment.BETTER_AUTH_URL,
+      betterAuthUrl: production.BETTER_AUTH_URL,
       betterAuthSecret: requiredEnvironment.BETTER_AUTH_SECRET,
       betterAuthSecrets: undefined,
       postmarkServerToken: "postmark-token",
       postmarkApiUrl: undefined,
-      mailFromAddress: "sign-in@localhost",
+      mailFromAddress: "sign-in@id.example.com",
       trustedOrigins: ["https://auth.example.com"],
       platformApplications: {},
       operationalLogIntervalMs: 30_000,
@@ -78,7 +79,7 @@ describe("unit: environment", () => {
       openApiEnabled: false,
       platformOrganizationSlug: "answerable",
       platformOrganizationName: "Answerable",
-      adminResourceIdentifier: "http://localhost:47300/api/admin",
+      adminResourceIdentifier: "https://id.example.com/api/admin",
     });
   });
 
@@ -326,6 +327,11 @@ test("production requires an explicit, valid ID origin; development and test def
     expect(() =>
       parseEnvironment({ ...production, BETTER_AUTH_URL: value }),
     ).toThrow("BETTER_AUTH_URL");
+  // The issuer, the cookies' origin and every link ID mails: never plain http.
+  for (const value of ["http://id.example.com", "javascript://id.example.com"])
+    expect(() =>
+      parseEnvironment({ ...production, BETTER_AUTH_URL: value }),
+    ).toThrow("BETTER_AUTH_URL: Required to be https in production");
   for (const nodeEnv of [undefined, "development", "test"]) {
     for (const value of [undefined, ""])
       expect(
@@ -359,6 +365,8 @@ for (const origin of [
   "invalid",
   "https://example.com?x=1",
   "https://example.com#x",
+  "https://*.example.com",
+  "https://auth.example.com, https://*.example.com",
 ])
   test(`production rejects non-origin ${origin}`, () => {
     expect(() =>

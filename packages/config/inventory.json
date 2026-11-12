@@ -38,7 +38,7 @@
         "name": "BETTER_AUTH_URL",
         "secret": false,
         "local": "http://localhost:47300",
-        "doc": "ID's origin: the issuer, the pages' origin, the base of the admin API's audience and the domain sign-in mail comes from",
+        "doc": "ID's origin: the issuer, the pages' origin, the base of the admin API's audience and the domain sign-in mail comes from; production requires https",
         "source": "chart",
         "optional": false
       },
@@ -103,7 +103,7 @@
         "name": "BETTER_AUTH_TRUSTED_ORIGINS",
         "secret": false,
         "fallback": "",
-        "doc": "Origins trusted besides ID's own, separated by commas: browser origins and identity-provider endpoints; production requires them",
+        "doc": "Origins trusted besides ID's own, separated by commas: browser origins and identity-provider endpoints; production requires them, each an exact origin with no wildcard",
         "source": "chart",
         "optional": true
       },
