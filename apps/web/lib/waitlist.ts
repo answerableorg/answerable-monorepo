@@ -1,6 +1,6 @@
 import { findCountry } from "@answerable/countries"
 import { isHeadcount } from "./headcounts"
-import { EMAIL_PATTERN, MESSAGES } from "./waitlist-rules"
+import { EMAIL_PATTERN, MESSAGES, MIN_FILL_MS } from "./waitlist-rules"
 import {
   createSheetsClient,
   parseSheetsConfig,
@@ -16,6 +16,8 @@ export type WaitlistInput = {
   fullName?: string
   /** Required where the form asks for it, the founding cohort's. */
   business?: { name: string; headcount: string }
+  /** The values of the form's two guard fields, `GUARD_FIELDS`. */
+  guard: { trap: string; openedAt: string }
 }
 type WaitlistErrors = Partial<
   Record<
@@ -79,6 +81,12 @@ export async function submitWaitlist(
   }
   if (Object.keys(errors).length || !country) return { status: "error", errors }
 
+  // Answers as a success does and writes nothing, so a script learns nothing.
+  if (automated(input.guard, (deps.now ?? (() => new Date()))())) {
+    log.info(line("guard_tripped", {}))
+    return { status: "success", email }
+  }
+
   const config = parseSheetsConfig(env)
   if (!config) {
     if (env.NODE_ENV === "production") {
@@ -117,6 +125,14 @@ export async function submitWaitlist(
     )
     return { status: "error", message: MESSAGES.failed }
   }
+}
+
+/** A filled trap, or a form not opened, or opened a moment ago or in the future. */
+function automated(guard: WaitlistInput["guard"], now: Date): boolean {
+  if (guard.trap !== "") return true
+  const openedAt = Number(guard.openedAt)
+  if (!guard.openedAt.trim() || !Number.isFinite(openedAt)) return true
+  return now.getTime() - openedAt < MIN_FILL_MS
 }
 
 type LogFields = Record<string, string | number | undefined>

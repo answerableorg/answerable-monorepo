@@ -175,7 +175,7 @@ describe("unit: sheets client", () => {
     expect(h.calls.setDataValidation).toEqual([checkbox])
     expect(h.calls.addRow).toHaveLength(1)
     expect(h.calls.loadHeaderRow).toBe(1)
-    expect(h.calls.getRows).toBe(1)
+    expect(h.calls.getCellsInRange).toEqual(["A2:A"])
   })
   for (const email of ["a@b.com", "  A@B.COM "]) {
     test(`updates timestamp and country cells for ${JSON.stringify(email)}`, async () => {
@@ -205,6 +205,38 @@ describe("unit: sheets client", () => {
       expect(h.calls.addRow).toEqual([])
     })
   }
+  test("looks an address up in the email column alone, wherever that column is", async () => {
+    const headers = [
+      "note",
+      "email",
+      "last_seen_at",
+      "country_code",
+      "country_name",
+    ]
+    const h = harness({
+      headers,
+      rows: [{ email: "x@y.com" }, { email: "a@b.com", note: "kept" }],
+    })
+    await h.client.upsert(input("a@b.com"))
+    expect(h.calls.getCellsInRange).toEqual(["B2:B"])
+    expect(h.calls.loadCells).toEqual([["C3", "D3", "E3"]])
+    expect(h.calls.addRow).toEqual([])
+  })
+  test("counts a blank row above an address when it names the row to update", async () => {
+    const h = harness({
+      headers: [...COLUMNS],
+      rows: [{ email: "x@y.com" }, {}, { email: "a@b.com" }],
+    })
+    await h.client.upsert(input("a@b.com"))
+    expect(h.calls.loadCells).toEqual([["C4", "D4", "E4"]])
+  })
+  test("appends when the column holds no address at all", async () => {
+    const h = harness({ headers: [...COLUMNS], rows: [{}] })
+    expect(await h.client.upsert(input("a@b.com"))).toMatchObject({
+      outcome: "inserted",
+    })
+    expect(h.calls.getCellsInRange).toEqual(["A2:A"])
+  })
   test("writes timestamps in the spreadsheet's timezone", async () => {
     const local = "2026-09-09 11:00"
     const h = harness(
@@ -276,7 +308,7 @@ describe("unit: sheets client", () => {
       const h = harness({ headers: COLUMNS.filter((key) => key !== missing) })
       await expect(h.client.upsert(input("a@b.com"))).rejects.toThrow(missing)
       noWrites(h.calls)
-      expect(h.calls.getRows).toBe(0)
+      expect(h.calls.getCellsInRange).toEqual([])
     })
   }
   test("reports all missing columns and the expected header", async () => {
@@ -461,7 +493,7 @@ describe("unit: sheets client", () => {
   for (const method of [
     "setHeaderRow",
     "setDataValidation",
-    "getRows",
+    "getCellsInRange",
     "addRow",
     "loadCells",
     "saveUpdatedCells",

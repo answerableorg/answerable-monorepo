@@ -1,10 +1,10 @@
 // Shared in-memory worksheet for the sheets and waitlist unit tests.
-import type { Cell, GridRange, Row, ValidationRule, Worksheet } from "./sheets"
+import type { Cell, GridRange, ValidationRule, Worksheet } from "./sheets"
 
 type Method =
   | "loadHeaderRow"
   | "setHeaderRow"
-  | "getRows"
+  | "getCellsInRange"
   | "addRow"
   | "loadCells"
   | "saveUpdatedCells"
@@ -28,7 +28,7 @@ export function fakeWorksheet(
   >()
   const calls = {
     loadHeaderRow: 0,
-    getRows: 0,
+    getCellsInRange: [] as string[],
     setHeaderRow: [] as string[][],
     addRow: [] as { values: Values; options?: { raw?: boolean } }[],
     loadCells: [] as string[][],
@@ -61,13 +61,21 @@ export function fakeWorksheet(
     get headerValues() {
       return header()
     },
-    async getRows() {
-      calls.getRows++
-      fail("getRows")
-      return rows.map((row, index): Row => ({
-        get: (key) => row[key],
-        rowNumber: index + 2,
-      }))
+    // A column below the header, as the Sheets API answers it: a blank row is
+    // an empty entry and the trailing ones are left off.
+    async getCellsInRange(range) {
+      calls.getCellsInRange.push(range)
+      fail("getCellsInRange")
+      const [, letters] = /^([A-Z]+)2:\1$/.exec(range) ?? []
+      if (!letters)
+        throw new Error(`Not a single column below the header: ${range}`)
+      const key =
+        header()[
+          [...letters].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1
+        ]
+      const values = rows.map((row) => (row[key] ? [row[key]] : []))
+      while (values.length && !values[values.length - 1].length) values.pop()
+      return values.length ? values : undefined
     },
     async addRow(values, options) {
       calls.addRow.push({ values: { ...values }, options })
@@ -77,7 +85,7 @@ export function fakeWorksheet(
       )
       const index = rows.length
       rows.push(row)
-      return { get: (key: string) => row[key], rowNumber: index + 2 }
+      return { rowNumber: index + 2 }
     },
     async loadCells(ranges) {
       calls.loadCells.push([...ranges])

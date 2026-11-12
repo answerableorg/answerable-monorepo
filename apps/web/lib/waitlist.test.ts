@@ -10,6 +10,8 @@ const productionEnv = {
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:
     "-----BEGIN PRIVATE KEY-----\\nTESTKEY\\n-----END PRIVATE KEY-----\\n",
 }
+const now = new Date("2026-09-09T10:00:00.000Z")
+const openedAt = now.getTime() - 10_000
 function harness(
   initial: Parameters<typeof fakeWorksheet>[0] = { headers: [...COLUMNS] },
   env: Record<string, string | undefined> = productionEnv,
@@ -25,9 +27,10 @@ function harness(
     country = "GB",
     business?: { name: string; headcount: string },
     fullName?: string,
+    guard = { trap: "", openedAt: String(openedAt) },
   ) =>
     submitWaitlist(
-      { email, country, business, fullName },
+      { email, country, business, fullName, guard },
       {
         env,
         log,
@@ -35,7 +38,7 @@ function harness(
           opened.push(config)
           return { sheet: fake.worksheet, timeZone: "UTC" }
         },
-        now: () => new Date("2026-09-09T10:00:00.000Z"),
+        now: () => now,
       },
     )
   const lines = (level: keyof typeof log) =>
@@ -261,6 +264,60 @@ describe("unit: waitlist", () => {
       '[waitlist] sheets_header_created {"email":"a@b.com"}',
     ])
     expect(h.log.error).not.toHaveBeenCalled()
+  })
+  describe("the guard", () => {
+    const tripped = [
+      [
+        "a filled trap",
+        { trap: "http://spam.example", openedAt: String(openedAt) },
+      ],
+      ["no opening time", { trap: "", openedAt: "" }],
+      ["a blank opening time", { trap: "", openedAt: "  " }],
+      ["an opening time that is not a number", { trap: "", openedAt: "soon" }],
+      [
+        "a form sent a moment after it opened",
+        { trap: "", openedAt: String(now.getTime() - 2_999) },
+      ],
+      [
+        "a form that opens in the future",
+        { trap: "", openedAt: String(now.getTime() + 60_000) },
+      ],
+    ] as const
+    for (const [name, guard] of tripped) {
+      test(`answers as a success and writes nothing for ${name}`, async () => {
+        const h = harness()
+        expect(
+          await h.submit("a@b.com", "GB", acme, ada, { ...guard }),
+        ).toEqual(success)
+        expect(h.opened).toEqual([])
+        expect(h.rows).toEqual([])
+        expect(h.lines("info")).toEqual(["[waitlist] guard_tripped {}"])
+        expect(h.log.error).not.toHaveBeenCalled()
+      })
+    }
+    test("answers as a success when the sheet is not configured, too", async () => {
+      const h = harness(undefined, { NODE_ENV: "production" })
+      expect(
+        await h.submit("a@b.com", "GB", acme, ada, { trap: "x", openedAt: "" }),
+      ).toEqual(success)
+      expect(h.log.error).not.toHaveBeenCalled()
+    })
+    test("still reports an invalid form as one, so a script learns nothing it could not see", async () => {
+      const h = harness()
+      expect(
+        await h.submit("nope", "GB", acme, ada, { trap: "x", openedAt: "" }),
+      ).toEqual({ status: "error", errors: { email: MESSAGES.invalid } })
+    })
+    test("lets a form sent after exactly the minimum time through", async () => {
+      const h = harness()
+      expect(
+        await h.submit("a@b.com", "GB", acme, ada, {
+          trap: "",
+          openedAt: String(now.getTime() - 3_000),
+        }),
+      ).toEqual(success)
+      expect(h.rows).toHaveLength(1)
+    })
   })
   test("repeated submissions succeed and leave one row", async () => {
     const h = harness()

@@ -13,7 +13,7 @@ import { flushSync } from "react-dom"
 import { joinFoundingCohort } from "@/app/actions"
 import { HEADCOUNTS } from "@/lib/headcounts"
 import type { WaitlistState } from "@/lib/waitlist"
-import { EMAIL_PATTERN, MESSAGES } from "@/lib/waitlist-rules"
+import { EMAIL_PATTERN, GUARD_FIELDS, MESSAGES } from "@/lib/waitlist-rules"
 import { Button } from "@answerable/ui/components/button"
 import { CountrySelect } from "@answerable/ui/components/country-select"
 import { Field, FieldError, FieldLabel } from "@answerable/ui/components/field"
@@ -45,6 +45,12 @@ export function CohortForm() {
   )
   const [step, setStep] = useState<1 | 2>(1)
   const [emailError, setEmailError] = useState<string>()
+  // When the browser had the form, never set on the server: the page is static.
+  // A form posted before this runs carries none, and the server drops it.
+  const openedAt = useRef("")
+  useEffect(() => {
+    openedAt.current = String(Date.now())
+  }, [])
   const formRef = useRef<HTMLFormElement>(null)
   const doneRef = useRef<HTMLParagraphElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -99,6 +105,7 @@ export function CohortForm() {
     const staged = document.documentElement.hasAttribute("data-stage")
     if (staged && step === 1) return next()
     const data = new FormData(event.currentTarget)
+    data.set(GUARD_FIELDS.openedAt, openedAt.current)
     startTransition(() => formAction(data))
   }
 
@@ -113,6 +120,18 @@ export function CohortForm() {
       errors={errors}
       className="w-full gap-3"
     >
+      {/* Out of sight, out of the tab order and the accessibility tree, and
+          told not to autofill: only a script fills it. */}
+      <div className="sr-only" aria-hidden="true" inert>
+        <input
+          type="text"
+          name={GUARD_FIELDS.trap}
+          tabIndex={-1}
+          autoComplete="off"
+          defaultValue=""
+        />
+      </div>
+
       <Field name="email">
         <FieldLabel>Work email</FieldLabel>
         <div className="flex gap-2">

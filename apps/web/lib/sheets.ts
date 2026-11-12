@@ -45,13 +45,6 @@ export function parseSheetsConfig(
   return { spreadsheetId, clientEmail, privateKey }
 }
 
-/** The slice of GoogleSpreadsheetRow the upsert needs. */
-export type Row = {
-  get(key: string): unknown
-  /** 1-based, so row 2 is the first one below the header. */
-  readonly rowNumber: number
-}
-
 /**
  * The slice of GoogleSpreadsheetCell the upsert needs. Never its `value`, which
  * runs a string starting with "=" as a formula; a name is free text.
@@ -76,11 +69,18 @@ export type Worksheet = {
   loadHeaderRow(): Promise<void>
   setHeaderRow(headers: string[]): Promise<void>
   readonly headerValues: string[]
-  getRows(): Promise<Row[]>
+  /**
+   * One A1 range of values as the sheet shows them: an entry per row, empty
+   * for a blank row, and cut short after the last row that holds a value.
+   */
+  getCellsInRange(range: string): Promise<string[][] | undefined>
   addRow(
     values: Record<string, string>,
     options?: { raw?: boolean },
-  ): Promise<Row>
+  ): Promise<{
+    /** 1-based, so row 2 is the first one below the header. */
+    readonly rowNumber: number
+  }>
   loadCells(ranges: string[]): Promise<void>
   getCellByA1(address: string): Cell
   saveUpdatedCells(): Promise<void>
@@ -144,14 +144,19 @@ export function createSheetsClient(
         asked.business_headcount = businessHeadcount
       }
       if (fullName !== undefined) asked.full_name = fullName
-      const rows = await sheet.getRows()
-      const existing = rows.find(
-        (row) =>
-          String(row.get("email") ?? "")
+      // The address column alone, so what a submit reads does not grow with
+      // the columns of every row. The header is row 1.
+      const emailColumn = columnLetter(sheet.headerValues.indexOf("email"))
+      const addresses =
+        (await sheet.getCellsInRange(`${emailColumn}2:${emailColumn}`)) ?? []
+      const found = addresses.findIndex(
+        ([address]) =>
+          String(address ?? "")
             .trim()
             .toLowerCase() === email,
       )
-      if (existing) {
+      if (found !== -1) {
+        const existingRow = found + 2
         // Save only client-owned cells, preserving the reader's edits.
         const updates = [
           ["last_seen_at", at],
@@ -159,7 +164,7 @@ export function createSheetsClient(
           ["country_name", countryName],
           ...Object.entries(asked),
         ].map(([column, value]) => ({
-          address: `${columnLetter(sheet.headerValues.indexOf(column))}${existing.rowNumber}`,
+          address: `${columnLetter(sheet.headerValues.indexOf(column))}${existingRow}`,
           value,
         }))
         await sheet.loadCells(updates.map(({ address }) => address))

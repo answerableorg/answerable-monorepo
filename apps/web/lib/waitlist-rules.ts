@@ -16,3 +16,14 @@ export const MESSAGES = {
 } as const
 
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
+ * The two form fields a person never sees or fills. `trap` is a text input out
+ * of sight, which a script that fills every field fills; `openedAt` is the
+ * time in milliseconds at which the browser opened the form, which a script
+ * that posts without loading the page leaves out.
+ */
+export const GUARD_FIELDS = { trap: "fax", openedAt: "openedAt" } as const
+
+/** A form sent sooner than this after it opened was not filled by a person. */
+export const MIN_FILL_MS = 3000
