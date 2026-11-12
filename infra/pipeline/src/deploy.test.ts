@@ -17,6 +17,7 @@ import {
   parseDigests,
   parseJob,
   readCluster,
+  redactStaff,
   registryLogin,
   runJob,
   type Deps,
@@ -244,6 +245,38 @@ describe("the signature production checks", () => {
     expect(run).toContain('--certificate-github-workflow-sha "$GITHUB_SHA"')
     expect(run).toContain("/.github/workflows/deploy-staging.yml@refs/tags/staging/")
     expect(run).toContain("--certificate-oidc-issuer https://token.actions.githubusercontent.com")
+  })
+})
+
+describe("redactStaff", () => {
+  test("names each address by its place, as typed or URL-encoded and in any case, and hides any other address and every member id", () => {
+    const text = [
+      "you@answerable.org (member abc-123): added to answerable-owner",
+      "GET /organizations/o1/members?email=STEPHEN%40answerable.org answered 500",
+      "someone.else+tag@example.co.uk: owners",
+      "PUT /organizations/o1/groups/g1/members/abc-123 (Idempotency-Key make-admin-1-platform-admins-abc-123) answered 409",
+    ].join("\n")
+    expect(redactStaff(text, ["you@answerable.org", "stephen@answerable.org"])).toBe(
+      [
+        "<address 1> (member): added to answerable-owner",
+        "GET /organizations/o1/members?email=<address 2> answered 500",
+        "<address>: owners",
+        "PUT /organizations/o1/groups/g1/members/<id> (Idempotency-Key <key>) answered 409",
+      ].join("\n"),
+    )
+    expect(redactStaff("no names here\n", [])).toBe("no names here\n")
+  })
+})
+
+describe("ops.yml's make-admin", () => {
+  test("keeps the emails out of the public log: never a step's env, read from the event and masked before run-job", async () => {
+    const text = await Bun.file(new URL("../../../.github/workflows/ops.yml", import.meta.url)).text()
+    const { jobs } = Bun.YAML.parse(text) as { jobs: Record<string, { steps?: { id?: string; run?: string; env?: Record<string, string> }[] }> }
+    for (const step of Object.values(jobs).flatMap((job) => job.steps ?? [])) expect(Object.values(step.env ?? {}).join(" ")).not.toContain("inputs.email")
+    const run = jobs.run!.steps!.find((step) => step.id === "job")!.run!
+    expect(run).toContain(`jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH"`)
+    expect(run.indexOf('echo "::add-mask::$email"')).toBeGreaterThan(-1)
+    expect(run.indexOf('echo "::add-mask::$email"')).toBeLessThan(run.indexOf("run-job make-admin"))
   })
 })
 
@@ -699,19 +732,49 @@ describe("runJob", () => {
     expect(rendered).toEqual({ mcps: await committed("charts/answerable/mcps.json"), chart: await committed("charts/answerable/Chart.yaml") })
   })
 
-  test("make-admin passes the emails as one value, separated by spaces, runs alone and restarts nothing", async () => {
-    const several = await fixture(restarts)
+  /** make-admin's log as infra/ops/src/make-admin.ts writes it, for two owners. */
+  const STAFF_LOG = [
+    "you@answerable.org (member mem_you123): added to answerable-owner, the admin MCP's owner role",
+    "stephen@answerable.org (member mem_stephen456): already in answerable-owner",
+    "you@answerable.org (member mem_you123): added to platform-admins, every platform scope",
+    "stephen@answerable.org: owners, not in platform-admins.",
+    "Root is locked now: ID refuses the root secret (403 root_locked), because a person holds platform:write.",
+    "",
+  ].join("\n")
+  const staff = (call: RecordedCall) => (call.argv[1] === "logs" ? { stdout: STAFF_LOG } : restarts(call))
+
+  test("make-admin passes the emails as one value in a values file, separated by spaces, runs alone and restarts nothing", async () => {
+    let values: unknown
+    const several = await fixture((call) => {
+      if (call.argv[1] === "upgrade") values = JSON.parse(readFileSync(call.argv.at(-1)!, "utf8"))
+      return staff(call)
+    })
     await runJob({ environment: "staging", job: "make-admin", emails: ["you@answerable.org", "stephen@answerable.org", "keir@answerable.org"] }, several.deps)
-    const upgrade = several.runner.calls.find((call) => call.argv[1] === "upgrade")!.argv
-    expect(upgrade.slice(-2)).toEqual(["--set-string", "ops.adminEmail=you@answerable.org stephen@answerable.org keir@answerable.org"])
-    const admin = await fixture(restarts)
+    expect(values).toEqual({ ops: { adminEmail: "you@answerable.org stephen@answerable.org keir@answerable.org" } })
+    const admin = await fixture(staff)
     await runJob({ environment: "staging", job: "make-admin", emails: ["you@answerable.org"], timeout: "5m" }, admin.deps)
     expect(commands(admin)).toEqual([
       ...prelude,
-      jobUpgrade("--set ops.bootstrap=false --set ops.register=false --set ops.makeAdmin=true", " --set-string ops.adminEmail=you@answerable.org").replace("--timeout 10m", "--timeout 5m"),
+      jobUpgrade("--set ops.bootstrap=false --set ops.register=false --set ops.makeAdmin=true", " -f <dir>/make-admin.json").replace("--timeout 10m", "--timeout 5m"),
       "kubectl logs -n answerable job/ops-make-admin --all-containers",
     ])
     expect(admin.runner.commands().some((command) => command.startsWith("kubectl rollout"))).toBe(false)
+  })
+
+  test("make-admin prints what it did and no address or member id: the workflow's log is public", async () => {
+    const f = await fixture(staff)
+    await runJob({ environment: "staging", job: "make-admin", emails: ["you@answerable.org", "stephen@answerable.org"] }, f.deps)
+    expect(f.log()).toContain(
+      "make-admin named 2 addresses: 2 added to a group, 1 already in it; root is locked. The Job's own log names each, for a day: kubectl -n answerable logs job/ops-make-admin.",
+    )
+    for (const hidden of ["you@", "stephen@", "mem_"]) expect(f.log()).not.toContain(hidden)
+    const one = await fixture((call) => (call.argv[1] === "logs" ? { stdout: "you@answerable.org (member m1): already in answerable-owner\n" } : restarts(call)))
+    await runJob({ environment: "staging", job: "make-admin", emails: ["you@answerable.org"] }, one.deps)
+    expect(one.log()).toContain("make-admin named 1 address: 0 added to a group, 1 already in it. The Job's own log")
+    const unread = await fixture((call) => (call.argv[1] === "logs" ? { exitCode: 1, stderr: "you@answerable.org\n" } : restarts(call)))
+    await runJob({ environment: "staging", job: "make-admin", emails: ["you@answerable.org"] }, unread.deps)
+    expect(unread.log()).toContain("(The Job's log could not be read: kubectl exited with 1.)")
+    expect(unread.log()).not.toContain("you@")
   })
 
   test("says so when the Job's log cannot be read, and goes on", async () => {
@@ -759,15 +822,28 @@ describe("runJob", () => {
     expect(f.runner.commands().some((command) => command.startsWith("kubectl apply"))).toBe(false)
   })
 
-  test("prints the Jobs' logs and fails when the Job fails", async () => {
+  test("prints the Jobs' logs and fails when the Job fails, make-admin's with each address by its place and no member id", async () => {
     const f = await fixture((call) => {
       const command = call.argv.join(" ")
       if (command.startsWith("helm upgrade")) return { exitCode: 1 }
-      if (command === "kubectl get jobs -n answerable -o name") return { stdout: "job.batch/ops-make-admin\n" }
+      if (command === "kubectl get jobs -n answerable -o name") return { stdout: "job.batch/ops-register\njob.batch/ops-make-admin\n" }
+      if (command.startsWith("kubectl logs") && command.includes("ops-make-admin"))
+        return {
+          stdout: "[pod/ops-make-admin-x/make-admin] Error: No member of the platform organisation has the email Stephen@Answerable.org: sign in once at https://id.answerable-staging.uk/login, then run make-admin again\n",
+          stderr: "PUT /organizations/org_1/groups/grp_1/members/mem_9 (Idempotency-Key make-admin-run-answerable-owner-mem_9) answered 500\n",
+        }
+      if (command.startsWith("kubectl describe") && command.includes("ops-make-admin")) return { stdout: "    OPS_ADMIN_EMAIL:  you@answerable.org stephen@answerable.org\n" }
+      if (command.startsWith("kubectl logs")) return { stdout: "log of ops-register\n" }
       return restarts(call)
     })
-    await expect(runJob({ environment: "staging", job: "make-admin", emails: ["you@answerable.org"] }, f.deps)).rejects.toThrow("helm upgrade failed")
+    await expect(runJob({ environment: "staging", job: "make-admin", emails: ["you@answerable.org", "stephen@answerable.org"] }, f.deps)).rejects.toThrow("helm upgrade failed")
     expect(f.runner.commands()).toContain("kubectl logs -n answerable -l job-name=ops-make-admin --all-containers --prefix --tail=200")
+    expect(f.log()).toContain("log of ops-register")
+    expect(f.log()).toContain("has the email <address 2>: sign in once at https://id.answerable-staging.uk/login")
+    expect(f.log()).toContain("/members/<id> (Idempotency-Key <key>) answered 500")
+    expect(f.log()).toContain("OPS_ADMIN_EMAIL:  <address 1> <address 2>")
+    expect(f.log()).toContain("(Addresses and member ids are hidden here; the Job's own log keeps them: kubectl -n answerable logs job/ops-make-admin.)")
+    for (const hidden of ["you@", "stephen@", "Stephen@", "mem_9"]) expect(f.log()).not.toContain(hidden)
   })
 
   test("fails when the Toolbox or the admin MCP is missing, or there are none", async () => {

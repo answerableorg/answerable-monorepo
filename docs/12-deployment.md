@@ -218,7 +218,7 @@ ID signs people in by an emailed link and code, sent through Postmark ([the desi
 
 | Signal | State |
 | --- | --- |
-| Pod logs, including ID's `[id] operations` lines and the Jobs' logs | On: `kubectl logs` with a kubeconfig; a failed deploy prints the migration and ops Jobs' logs in the workflow |
+| Pod logs, including ID's `[id] operations` lines and the Jobs' logs | On: `kubectl logs` with a kubeconfig; a failed deploy prints the migration and ops Jobs' logs in the workflow, whose log is public, so `make-admin`'s is printed with no address or member id |
 | The deploy's smoke test | On: every deploy, through Cloudflare |
 | `helm history answerable -n answerable` | On: the deploy log |
 | ID's audit trail | On: `GET /api/admin/v1/audit-events` |

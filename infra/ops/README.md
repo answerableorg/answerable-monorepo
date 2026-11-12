@@ -12,7 +12,7 @@ Each is safe to run again: a second run changes nothing. None prints a password,
 
 ## Run them
 
-The deploy switches `bootstrap` and `register` on every time (`infra/pipeline/README.md`). The `ops.yml` workflow runs `register` or `make-admin` once more: `bun infra/pipeline/src/cli.ts run-job <register|make-admin> --environment <environment> [--email <address>]`, which switches the Job on for one upgrade on the release's own values, with the chart of the commit the release runs, and prints the Job's log. `bootstrap` runs again with the next deploy.
+The deploy switches `bootstrap` and `register` on every time (`infra/pipeline/README.md`). The `ops.yml` workflow runs `register` or `make-admin` once more: `bun infra/pipeline/src/cli.ts run-job <register|make-admin> --environment <environment> [--email <address>]`, which switches the Job on for one upgrade on the release's own values, with the chart of the commit the release runs, and prints the Job's log; for `make-admin`, whose log names staff, it prints only what the Job did ([`infra/pipeline`](../pipeline/README.md)), and the Job's log stays in the cluster for a day. `bootstrap` runs again with the next deploy.
 
 Exit codes: `0` done, `1` failed (the message says why), `2` wrong usage or a missing or invalid variable (the message names it, never its value).
 

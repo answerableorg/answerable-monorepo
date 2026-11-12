@@ -283,7 +283,30 @@ async function applySecret(session: Session, secret: string, type: string, value
   session.deps.log(`${secret} holds ${Object.keys(values).join(", ")}.\n`)
 }
 
-async function printJobDiagnostics(session: Session): Promise<void> {
+/** The Job whose log and pod name staff: their addresses, and their member ids in ID. */
+const STAFF_JOB = "ops-make-admin"
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+/**
+ * `make-admin`'s log and pod as a public Actions log may show them: each address of `emails` becomes its place in the list
+ * (`<address 2>`), as typed or URL-encoded, any other address `<address>`, and every member id and Idempotency-Key, which
+ * holds one, is hidden. The Job's own log, in the cluster, keeps them.
+ */
+export function redactStaff(text: string, emails: readonly string[]): string {
+  let redacted = text
+  emails.forEach((email, index) => {
+    for (const form of new Set([email, encodeURIComponent(email)])) redacted = redacted.replace(new RegExp(escapeRegExp(form), "gi"), `<address ${index + 1}>`)
+  })
+  return redacted
+    .replace(/[^\s"'<>(),;:=/?&]+(?:@|%40)[^\s"'<>(),;:/?&]+/g, "<address>")
+    .replace(/\(member [^)]*\)/g, "(member)")
+    .replace(/\/members\/[^\s/?)]+/g, "/members/<id>")
+    .replace(/Idempotency-Key [^\s)]+/g, "Idempotency-Key <key>")
+}
+
+/** Print the migration and ops Jobs' logs and pods. `make-admin`'s are read quietly and printed redacted, with the addresses in `emails` by their place. */
+async function printJobDiagnostics(session: Session, emails: readonly string[]): Promise<void> {
   const listed = await session.show(["kubectl", "get", "jobs", "-n", NAMESPACE, "-o", "name"])
   const names = listed.stdout
     .split("\n")
@@ -291,13 +314,27 @@ async function printJobDiagnostics(session: Session): Promise<void> {
     .filter((name) => DIAGNOSED_JOBS.test(name))
   for (const name of names) {
     session.deps.log(`\n--- Job ${name} ---\n`)
-    await session.show(["kubectl", "logs", "-n", NAMESPACE, "-l", `job-name=${name}`, "--all-containers", "--prefix", "--tail=200"])
-    await session.show(["kubectl", "describe", "pods", "-n", NAMESPACE, "-l", `job-name=${name}`])
+    const reads = [
+      ["kubectl", "logs", "-n", NAMESPACE, "-l", `job-name=${name}`, "--all-containers", "--prefix", "--tail=200"],
+      ["kubectl", "describe", "pods", "-n", NAMESPACE, "-l", `job-name=${name}`],
+    ]
+    for (const argv of reads) {
+      if (name !== STAFF_JOB) {
+        await session.show(argv)
+        continue
+      }
+      const read = await session.quiet(argv)
+      session.deps.log(redactStaff(`${read.stdout}${read.stderr}`, emails))
+    }
+    if (name === STAFF_JOB) session.deps.log(`(Addresses and member ids are hidden here; the Job's own log keeps them: kubectl -n ${NAMESPACE} logs job/${STAFF_JOB}.)\n`)
   }
 }
 
-/** `helm upgrade` of the release from `chart` with `args` after it, which waits for the pods and the Jobs and rolls back on failure. */
-async function upgrade(session: Session, install: boolean, timeout: string, args: readonly string[], chart = CHART): Promise<void> {
+/**
+ * `helm upgrade` of the release from `chart` with `args` after it, which waits for the pods and the Jobs and rolls back on failure. `emails`
+ * are make-admin's addresses, which a failure's diagnostics name by their place.
+ */
+async function upgrade(session: Session, install: boolean, timeout: string, args: readonly string[], chart = CHART, emails: readonly string[] = []): Promise<void> {
   const result = await session.show([
     "helm",
     "upgrade",
@@ -316,7 +353,7 @@ async function upgrade(session: Session, install: boolean, timeout: string, args
   ])
   if (result.exitCode === 0) return
   session.deps.log("\nThe upgrade failed. The logs of the migration and ops Jobs follow.\n")
-  await printJobDiagnostics(session)
+  await printJobDiagnostics(session, emails)
   throw new PipelineError(`helm upgrade failed with exit code ${result.exitCode}`)
 }
 
@@ -406,8 +443,35 @@ export async function deploy(options: DeployOptions, deps: Deps): Promise<void> 
   })
 }
 
-/** An address Helm's `--set-string` keeps whole: no comma, which would split it, no backslash, and no space, which separates addresses. */
+/** An address `ops.adminEmail` keeps whole: no space, which separates addresses, no comma and no backslash. */
 const EMAIL = /^[^\s@,\\]+@[^\s@,\\]+\.[^\s@,\\]+$/
+
+/** Write `ops.adminEmail`, the addresses separated by spaces, into a values file in `directory`; answers its path. JSON is YAML. */
+async function staffValues(directory: string, emails: readonly string[]): Promise<string> {
+  const file = join(directory, "make-admin.json")
+  await writeFile(file, JSON.stringify({ ops: { adminEmail: emails.join(" ") } }), { mode: 0o600 })
+  return file
+}
+
+/**
+ * What make-admin did, without a name: the workflow's log is public, and the Job's names staff and their member ids. Counts the lines
+ * `infra/ops/src/make-admin.ts` writes for each membership; the Job's own log keeps the detail for a day.
+ */
+async function summariseMakeAdmin(session: Session, named: number): Promise<void> {
+  const log = await session.quiet(["kubectl", "logs", "-n", NAMESPACE, `job/${STAFF_JOB}`, "--all-containers"])
+  if (log.exitCode !== 0) {
+    session.deps.log(`(The Job's log could not be read: kubectl exited with ${log.exitCode}.)\n`)
+    return
+  }
+  const lines = log.stdout.split("\n")
+  const added = lines.filter((line) => line.includes(": added to ")).length
+  const held = lines.filter((line) => line.includes(": already in ")).length
+  const locked = log.stdout.includes("Root is locked now")
+  session.deps.log(
+    `make-admin named ${named} ${named === 1 ? "address" : "addresses"}: ${added} added to a group, ${held} already in it${locked ? "; root is locked" : ""}. ` +
+      `The Job's own log names each, for a day: kubectl -n ${NAMESPACE} logs job/${STAFF_JOB}.\n`,
+  )
+}
 
 /** What `runJob` does. */
 export type RunJobOptions = {
@@ -451,8 +515,8 @@ async function chartAt(revision: string, directory: string, deps: Deps): Promise
 /**
  * Run an `ops` Job once, with the chart at the commit the release runs, never the checkout's, which may hold MCPs the images do not: upgrade
  * the release on the values it runs (`--reset-then-reuse-values`, so the images, their digests and `idEnvChecksum` stay) with that commit's
- * overlay and this Job alone switched on, wait for it, and print its log. After `register` it restarts the servers that read the client
- * secrets the Job wrote. Answers the commit.
+ * overlay and this Job alone switched on, wait for it, and print its log, or for `make-admin`, whose log names staff, only what it did. After
+ * `register` it restarts the servers that read the client secrets the Job wrote. Answers the commit.
  */
 export async function runJob(options: RunJobOptions, deps: Deps): Promise<string> {
   const emails = options.emails ?? []
@@ -474,11 +538,14 @@ export async function runJob(options: RunJobOptions, deps: Deps): Promise<string
         "-f",
         valuesFile,
         ...Object.entries(OPS_JOBS).flatMap(([job, value]) => ["--set", `${value}=${job === options.job}`]),
-        // One value, the addresses separated by spaces: Helm splits a value at a comma, never at a space.
-        ...(emails.length > 0 ? ["--set-string", `ops.adminEmail=${emails.join(" ")}`] : []),
-      ], chart)
-      const log = await session.show(["kubectl", "logs", "-n", NAMESPACE, `job/ops-${options.job}`, "--all-containers"])
-      if (log.exitCode !== 0) deps.log(`(The Job's log could not be read: kubectl exited with ${log.exitCode}.)\n`)
+        // The addresses in a values file, not on the command line, which the log prints: one value, separated by spaces.
+        ...(emails.length > 0 ? ["-f", await staffValues(directory, emails)] : []),
+      ], chart, emails)
+      if (options.job === "make-admin") await summariseMakeAdmin(session, emails.length)
+      else {
+        const log = await session.show(["kubectl", "logs", "-n", NAMESPACE, `job/ops-${options.job}`, "--all-containers"])
+        if (log.exitCode !== 0) deps.log(`(The Job's log could not be read: kubectl exited with ${log.exitCode}.)\n`)
+      }
       if (options.job === "register") await restartServers(session, timeout)
       deps.log(`\nRan ${options.job} in ${options.environment}.\n`)
       return revision

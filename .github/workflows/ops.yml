@@ -68,7 +68,9 @@ jobs:
         with:
           tools: helm kubectl
 
-      # run-job prints revision=<commit> on standard output, and its progress on standard error.
+      # run-job prints revision=<commit> on standard output, and its progress on standard error. The log is public: the
+      # emails are read from the run's event, not the step's env, which the log lists, and masked before anything runs;
+      # run-job prints only what make-admin did, and the Job's own log in the cluster names each member.
       - name: Run the Job
         id: job
         env:
@@ -77,16 +79,19 @@ jobs:
           KUBE_TOKEN: ${{ secrets.KUBE_TOKEN }}
           COMMAND: ${{ inputs.command }}
           TARGET: ${{ inputs.environment }}
-          EMAIL: ${{ inputs.email }}
         run: |
           if [ "$COMMAND" = make-admin ]; then
-            read -ra emails <<< "${EMAIL//,/ }"
+            given=$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH")
+            read -ra emails <<< "${given//,/ }"
             if [ "${#emails[@]}" -eq 0 ]; then
               echo "::error::make-admin needs the emails of the members who signed in"
               exit 1
             fi
             flags=()
-            for email in "${emails[@]}"; do flags+=(--email "$email"); done
+            for email in "${emails[@]}"; do
+              echo "::add-mask::$email"
+              flags+=(--email "$email")
+            done
             bun infra/pipeline/src/cli.ts run-job make-admin --environment "$TARGET" "${flags[@]}" >> "$GITHUB_OUTPUT"
           else
             bun infra/pipeline/src/cli.ts run-job "$COMMAND" --environment "$TARGET" >> "$GITHUB_OUTPUT"
