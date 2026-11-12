@@ -36,6 +36,8 @@ See [fresh authentication](#fresh-authentication) for the additional requirement
 | `org:users`      | Change member windows, revoke or reinstate membership, and read member access.                       |
 | `org:members`    | List your organisation's members (with their user id, email, name, status, membership window and whether the membership is effective) and groups, and nothing else: for a directory client such as a file service. `org:read` also allows these two lists. |
 
+**`org:users` trusts a firm's administrator with every membership of their firm, their own included.** No member command asks who set what. An administrator can lift an end date staff set on their own membership before it passes, reinstate a person staff removed, and remove a fellow administrator. Staff who need a control a firm's administrator cannot undo use the platform tier: [disable the user](/docs/id/admin-api/users/disableUser) (`platform:users`) or [disable the organisation](/docs/id/admin-api/organizations/disableOrganization) (`platform:write`).
+
 **Who may call a route.** `x-scopes.platform` is the staff scope. When `x-scopes.org` is present, an organisation's administrator holding that scope may call the route for their own organisation. Anyone else gets `403 insufficient_scope`, or `404 not_found` for an organisation they hold no grant in. Request each scope you need. Every write is audited.
 
 ## Fresh authentication
