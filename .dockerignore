@@ -5,7 +5,6 @@
 # Workspaces no image runs: only their package.json, which the frozen install reads with the lockfile.
 apps/web/*
 !apps/web/package.json
-apps/community-mcp
 packages/acceptance/*
 !packages/acceptance/package.json
 scripts/*

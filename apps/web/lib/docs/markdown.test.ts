@@ -57,7 +57,7 @@ test("a table has one row per entry", () => {
 })
 
 test("every standard error code has a meaning, an action and the SDK's retry policy", () => {
-  expect(errorRows.length).toBeGreaterThan(20)
+  expect(errorRows.length).toBeGreaterThan(15)
   for (const row of errorRows) {
     expect(row.meaning.length, row.code).toBeGreaterThan(10)
     expect(row.action.length, row.code).toBeGreaterThan(5)

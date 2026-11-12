@@ -4,7 +4,7 @@
 
 Any MCP server we build signs people in with Answerable ID and needs no setup: `bun mcp new` makes it, with its database and its sign-in done for you, and a tag ships it. These are the decisions that still hold under everything built on the foundation. The platform on top of it (the SDK's tool model, the conformance kit, the Toolbox) is designed in [`08-capability-platform.md`](08-capability-platform.md) and held to [`09-mcp-design-standard.md`](09-mcp-design-standard.md). How-to guides live at [`/docs/mcp`](../apps/web/content/docs/mcp/index.mdx); results live in the [evidence](../reports/mcp-foundation-evidence.md).
 
-MCPs live in `mcps/*`. Better Auth stays in ID; an MCP never creates accounts or sessions, and never reads ID's database. Extract a shared package only when a second consumer needs it: the app sign-in client in `apps/web/lib/oauth-test` has one consumer, so it stays there.
+MCPs live in `mcps/*`. Better Auth stays in ID; an MCP never creates accounts or sessions, and never reads ID's database. Extract a shared package only when a second consumer needs it.
 
 ## Decisions
 
