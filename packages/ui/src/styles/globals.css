@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./variants.css";
 /* The token contract: every default behind its `--design-*` hook, and the type levels. */
 @import "./tokens.css";
 
