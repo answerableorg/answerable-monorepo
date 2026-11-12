@@ -281,6 +281,19 @@ Read from the root `.env` by `bun run toolbox:dev`. An empty variable counts as 
 
 The admin API's audience is the origin of `TOOLBOX_RESOURCE_URL` and `/admin`, such as `http://localhost:47400/admin`; it has no variable. `TOOLBOX_STANDALONE_ORIGIN` is the origin of the MCPs the Toolbox [serves alone](/docs/mcp/servers#served-alone), each the resource `<origin>/<name>/mcp`: `https://mcp.<zone>` deployed, the Toolbox's own origin locally. An MCP whose database is its own adds a variable, `TOOLBOX_MCP_<NAME>_DATABASE_URL`, which the generated list names. `GET /health`, the readiness check, answers `200` with `{ "status": "ok", "databases": { "toolbox": "ok", "mcps": "ok" }, "providers": ["e2e", "example"] }` while the Toolbox's own database answers `select 1`, and `503` with `"status": "unavailable"` otherwise, whatever the `Host` header. `databases` also reports each MCP database, `unavailable` when it fails or takes more than 250 ms, without failing the check: a busy MCP pool is load, and its tools answer errors. `providers` lists every MCP the Toolbox serves, in its hub or alone.
 
+## What MCPs share
+
+Every MCP the Toolbox serves, in its hub or alone, runs in the Toolbox's one process, with every dependency it brings. So any line of their code can use what that process holds:
+
+| It holds | Which gives |
+| --- | --- |
+| `TOOLBOX_ID_CLIENT_SECRET`, the secret of `toolbox-hub` | `platform:read` on ID's admin API: every organisation's members, groups and access |
+| `TOOLBOX_MCPS_DATABASE_URL`, and each `TOOLBOX_MCP_<NAME>_DATABASE_URL` | Every shared MCP's tables, and each own MCP's database ([The two modes](/docs/mcp/database#the-two-modes)) |
+
+**No write to ID.** `toolbox-hub` holds `platform:read` alone: the register Job sets exactly that, narrowing a grant that held more, and the Toolbox's client refuses a write before it is sent. What an organisation needs in ID, the admin MCP's `toolbox_enable` makes with its own client ([Enable an organisation](/docs/toolbox/admin#enable-an-organisation)).
+
+**A process of its own** for an MCP that must not share this: Not yet.
+
 ## Limits
 
 | Limit | Value |

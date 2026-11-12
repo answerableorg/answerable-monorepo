@@ -57,7 +57,7 @@ flowchart TB
 | `packages/acceptance` | The acceptance kit extracted from `mcps/e2e`: the ID fixture, the SDK OAuth client and the browser sign-in, shared by every acceptance journey. |
 | `apps/id` | Unchanged data model. Gains a tenant-tier write surface for groups and entitlements, host registration (CIMD and policy-gated DCR) and, later, token exchange. |
 
-Two deployment shapes serve the same definitions. A provider mounted in the hub is called in process, so no token crosses a boundary. A provider served alone is an MCP server with its own resource identifier, as `mcps/e2e` is today. A remote provider called by the hub over MCP needs a token for that provider's audience, which Answerable ID does not issue to the hub today. **Not yet:** remote providers; they arrive with RFC 8693 token exchange in ID (already on the backlog in [`02-plan.md`](02-plan.md#backlog-after-the-fleet-migrates)).
+Two deployment shapes serve the same definitions. A provider mounted in the hub is called in process, so no token crosses a boundary, and so it shares the process's credentials with every other ([invariant 13](#security-invariants)). A provider served alone is an MCP server with its own resource identifier, as `mcps/e2e` is today. A remote provider called by the hub over MCP needs a token for that provider's audience, which Answerable ID does not issue to the hub today. **Not yet:** remote providers; they arrive with RFC 8693 token exchange in ID (already on the backlog in [`02-plan.md`](02-plan.md#backlog-after-the-fleet-migrates)).
 
 ## Capability model
 
@@ -261,6 +261,7 @@ Rate limits per organisation, per (organisation, principal), per (organisation, 
 10. Nothing identity-related leaves `apps/id`: the hub is a consumer of ID's tokens and admin API.
 11. The hub's admin API trusts ID for who may call it: a machine token with `toolbox:admin` is accepted without checking the client's organisation, because only platform staff can link a client to the admin resource in ID.
 12. Row-level security on `answerable.organisation_id` stops a query that forgets its organisation, not an injection: the setting is a session setting and one login serves every shared MCP, so SQL that reaches the database can set another organisation and reach every shared MCP's tables. No MCP builds SQL from a string; `bun mcp check` refuses `sql.raw` and a string or an untagged template passed to `execute` or `query`, and review catches the rest.
+13. Every MCP's code, in the hub or served alone, and every dependency it brings, runs in the Toolbox's one process, and so shares what that process holds: `toolbox-hub`'s secret, which gives `platform:read` on ID's admin API (every organisation's members, groups and access), and the login of the shared MCP database with the login of each own MCP's database. It holds no write to ID: `toolbox-hub` has `platform:read` alone, which the register Job sets exactly, `createToolboxId` refuses a write before it is sent, and a test fails on one in the Toolbox or `@answerable/mcp-platform`; `toolbox_enable`'s writes are the admin MCP's, with its own client. An MCP that must not share this needs a process of its own: Not yet ([`Q-MCP-OWN-PROCESS`](02-plan.md#open-register)).
 
 ## Not yet
 
