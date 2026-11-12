@@ -527,7 +527,7 @@ describe("A9 stopping someone", () => {
     await change(staffClient, "users_disable", { email: spare.email })
     const retired = await change(staffClient, "users_retireemail", { email: spare.email })
     await audited(staffClient, retired.receipt)
-    expect(retired.intent.preview.summary).toContain(`Retire the address ${spare.email}`)
+    expect(retired.intent.preview.summary).toContain(`Retire the address of ${spare.email}`)
     expect(await user(spareUser)).toMatchObject({ status: "disabled", retiredEmail: spare.email, email: `${spareUser}@retired.invalid` })
     expect(z.object({ items: z.array(z.unknown()) }).parse(await id.admin("GET", `/users?email=${encodeURIComponent(spare.email)}`)).items).toEqual([])
     expect(await refusal(staffClient, "users_enable", { email: spare.email })).toMatchObject({ code: "NOT_FOUND", message: expect.stringContaining("An address retired with users_retireemail finds nobody") })

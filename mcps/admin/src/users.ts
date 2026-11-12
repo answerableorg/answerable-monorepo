@@ -1,7 +1,7 @@
 import { defineMutation, ToolError, type ToolContext } from "@answerable/mcp"
 import { z } from "zod"
 import {
-  commitWith, errors, missingMember, missingOrganisation, named, noPrecondition, organizationId, precondition, scopes, target,
+  commitWith, errors, missingMember, missingOrganisation, named, noPrecondition, organizationId, person, precondition, scopes, target,
   type Member, type User, type Writes,
 } from "./writes"
 
@@ -27,7 +27,7 @@ export function userWrites({ calls, role, fresh, platform, organisation, protect
   // A user has no ETag, so the version a target binds is when ID last changed the user.
   const userTarget = (user: User) => target("user", user.id, user.email, user.updatedAt, "timestamp")
   const asSelf = (user: User, context: ToolContext) => user.id === context.principal.userId
-  const staffNote = (user: User) => (user.memberships.some(item => item.organizationId === platform) ? [`${user.name} is Answerable staff: this also ends their access to the admin MCP, and Answerable ID refuses it for the last platform administrator.`] : [])
+  const staffNote = (user: User) => (user.memberships.some(item => item.organizationId === platform) ? [`${user.email} is Answerable staff: this also ends their access to the admin MCP, and Answerable ID refuses it for the last platform administrator.`] : [])
 
   const userOutput = z.object({ userId: z.uuid(), status: z.enum(["active", "disabled"]), operationId: z.uuid() })
 
@@ -43,7 +43,7 @@ export function userWrites({ calls, role, fresh, platform, organisation, protect
       return {
         targets: [userTarget(user)],
         preview: {
-          summary: `Disable ${user.email} (${user.name}) in Answerable ID at every organisation they belong to: ${firms(user)}`,
+          summary: `Disable ${person(user.email, user.name)} in Answerable ID at every organisation they belong to: ${firms(user)}`,
           changes: [{ path: `users[${user.id}].status`, from: user.status, to: "disabled" }],
           effects: ["cascade_delete" as const],
           warnings: [
@@ -78,7 +78,7 @@ export function userWrites({ calls, role, fresh, platform, organisation, protect
       return {
         targets: [userTarget(user)],
         preview: {
-          summary: `Enable ${user.email} (${user.name}) in Answerable ID, so that they can sign in again at the organisations where their membership is in force: ${firms(user)}`,
+          summary: `Enable ${person(user.email, user.name)} in Answerable ID, so that they can sign in again at the organisations where their membership is in force: ${firms(user)}`,
           changes: [{ path: `users[${user.id}].status`, from: user.status, to: "active" }],
           warnings: [
             "Revoked sessions, grants and tokens are not restored: the person signs in again.",
@@ -110,7 +110,7 @@ export function userWrites({ calls, role, fresh, platform, organisation, protect
       return {
         targets: [userTarget(user)],
         preview: {
-          summary: `Retire the address ${user.email} of ${user.name}, for good, so that another person can hold it`,
+          summary: `Retire the address of ${person(user.email, user.name)}, for good, so that another person can hold it`,
           changes: [{ path: `users[${user.id}].email`, from: user.email, to: "a tombstone address" }, { path: `users[${user.id}].retiredEmail`, from: null, to: user.email }],
           warnings: [
             "Permanent: nothing gives the address back to this person, and that address then finds nobody.",
@@ -153,7 +153,7 @@ export function userWrites({ calls, role, fresh, platform, organisation, protect
       return {
         targets: [version],
         preview: {
-          summary: `Remove ${member.email} (${member.name}) from organisation ${named(row)}`,
+          summary: `Remove ${person(member.email, member.name)} from organisation ${named(row)}`,
           changes: [{ path: `organizations[${id}].members[${member.id}].membershipStatus`, from: member.membershipStatus, to: "revoked" }],
           effects: ["permission_change" as const],
           warnings: [
@@ -185,7 +185,7 @@ export function userWrites({ calls, role, fresh, platform, organisation, protect
       return {
         targets: [version],
         preview: {
-          summary: `Reinstate ${member.email} (${member.name}) in organisation ${named(row)}`,
+          summary: `Reinstate ${person(member.email, member.name)} in organisation ${named(row)}`,
           changes: [{ path: `organizations[${id}].members[${member.id}].membershipStatus`, from: member.membershipStatus, to: "active" }],
           effects: ["permission_change" as const],
           warnings: [

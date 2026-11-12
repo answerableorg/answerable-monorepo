@@ -38,6 +38,22 @@ export const target = (resource_type: string, resource_id: string, label: string
 export const noPrecondition = (write: string) =>
   `Answerable ID takes no precondition on ${write}: the admin MCP reads the target again just before it writes, but a change in between is not refused by ID.`
 export const named = (organisation: Organisation) => `“${organisation.name}” (${organisation.slug})`
+// Control characters, line and paragraph separators, and every quote mark, ASCII, typographic or full-width.
+const unsafe = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}"'`\p{Pi}\p{Pf}„‚＂＇]/gu
+/**
+ * Text a customer's directory chose, such as a member's name, as a preview shows it: on one line, without control or quote characters, at most 80
+ * characters. Staff set organisation and group names; a person's directory sets their name, so a preview shows it inside quotes it cannot close,
+ * beside the email, which stays the identifier, and never as words of the summary.
+ */
+function directoryText(value: string) {
+  const line = [...value.replace(unsafe, " ").replace(/\s+/gu, " ").trim()]
+  return line.length > 80 ? `${line.slice(0, 79).join("").trimEnd()}…` : line.join("")
+}
+/** A person as a summary names them: their email, then the name their directory gave them, quoted, when it has one. */
+export const person = (email: string, name: string) => {
+  const shown = directoryText(name)
+  return shown ? `${email} (“${shown}”)` : email
+}
 export const missingOrganisation = (organizationId: string) => `Answerable ID has no organisation ${organizationId}; organisations_list lists them`
 export const missingMember = (organizationId: string, id: string) => `Answerable ID has no member ${id} in organisation ${organizationId}; members_list lists them`
 export const precondition = (message: string, details: Record<string, unknown>) => new ToolError("PRECONDITION_FAILED", message, { details: { preconditions: [details] } })
