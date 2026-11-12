@@ -1,6 +1,6 @@
 # Conclusions: the pre-production audit
 
-Written on 12 November 2026, after the change sets landed on `claude/pre-production-audit` (62 commits over `main` at `9397a9cb`, this record included). Every number below comes from a probe an auditor ran, the coordinator's own re-runs, or a count on the landed tree. What was found and not fixed is in the [register](../../02-plan.md#open-register); what must hold before the first `production/*` tag is in [the runbook](../../../infra/README.md#before-the-first-production-tag).
+Written on 12 November 2026, after the change sets landed on `claude/pre-production-audit` (64 commits over `main` at `9397a9cb`, this record included). Every number below comes from a probe an auditor ran, the coordinator's own re-runs, or a count on the landed tree. What was found and not fixed is in the [register](../../02-plan.md#open-register); what must hold before the first `production/*` tag is in [the runbook](../../../infra/README.md#before-the-first-production-tag).
 
 ## What the goal was
 
@@ -19,7 +19,7 @@ Six audits in parallel, each with a Postgres of its own: ID's sign-in and protoc
 | Files deleted | | 20 |
 | Source lines outside tests, docs and generated files | | +1,381 / −1,509 |
 | Test lines | | +1,843 / −975 |
-| ID suite | 2,450 tests at 100% line and function coverage | 2,481 at 100%, in 686 s |
+| ID suite | 2,450 tests at 100% line and function coverage | 2,482 at 100%, in 601 s, on Better Auth 1.7.22 |
 | `mcp:test` | 13 suites | 13 of 13 |
 | Acceptance against real ID | | 106 journeys, 0 fail, in 235 s |
 | Kind stack | | 150 tests, 0 fail, in 358 s |
