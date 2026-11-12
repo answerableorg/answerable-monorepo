@@ -25,7 +25,7 @@
 | **OmniAdmin / OmniTable / `ocadmin`** | Our admin surfaces and CLI for the fleet |
 | **Tailnet** | Our headscale private mesh network; admin access lives only there |
 | **Civo** | The UK cloud provider hosting our central infrastructure (London) |
-| **Tutor MCP** | The first hosted MCP server (parked in `apps/community-mcp` until Answerable ID ships) |
+| **Tutor MCP** | The first hosted MCP server (parked until Answerable ID ships) |
 
 ## Cast of names
 

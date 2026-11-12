@@ -114,7 +114,7 @@ Resolved into the current design: Bun/native production integration, user/machin
 
 ## Backlog (after the fleet migrates)
 
-RFC 8693 token exchange (built off the critical path, contributed upstream) · SCIM provisioning · DPoP for external MCP clients · second-region disaster recovery · transactional outbox for provisioning events · Redis session cache · SAML for odd IdPs · **hosted email+password login with MFA for the 11 non-SSO tenants** (needs an email provider first) · **the tutor MCP** (parked in `apps/community-mcp/`).
+RFC 8693 token exchange (built off the critical path, contributed upstream) · SCIM provisioning · DPoP for external MCP clients · second-region disaster recovery · transactional outbox for provisioning events · Redis session cache · SAML for odd IdPs · **hosted email+password login with MFA for the 11 non-SSO tenants** (needs an email provider first) · **the tutor MCP** (parked; its design notes are in this repository's history, removed on 12 November 2026).
 
 ## Do not re-propose
 
