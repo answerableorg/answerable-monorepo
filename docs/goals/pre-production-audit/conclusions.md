@@ -1,6 +1,6 @@
 # Conclusions: the pre-production audit
 
-Written on 12 November 2026, after the change sets landed on `claude/pre-production-audit` (64 commits over `main` at `9397a9cb`, this record included). Every number below comes from a probe an auditor ran, the coordinator's own re-runs, or a count on the landed tree. What was found and not fixed is in the [register](../../02-plan.md#open-register); what must hold before the first `production/*` tag is in [the runbook](../../../infra/README.md#before-the-first-production-tag).
+Written on 12 November 2026, after the change sets landed on `claude/pre-production-audit` (65 commits over `main` at `9397a9cb`, this record included). Every number below comes from a probe an auditor ran, the coordinator's own re-runs, or a count on the landed tree. What was found and not fixed is in the [register](../../02-plan.md#open-register); what must hold before the first `production/*` tag is in [the runbook](../../../infra/README.md#before-the-first-production-tag).
 
 ## What the goal was
 
@@ -25,6 +25,8 @@ Six audits in parallel, each with a Postgres of its own: ID's sign-in and protoc
 | Kind stack | | 150 tests, 0 fail, in 358 s |
 | Website | | 338 tests; design 185, emails 43, countries 5 |
 | Typecheck and lint | 21 of 21 | 21 of 21, on a clean install |
+
+The owner also asked for the latest Next.js and React. Next.js is 16.4.6. React is 19.3.1 wherever the repository bundles it itself: the `e2e` MCP's view, the email templates and the design package. The website renders with the React that Next.js carries (19.3.0-canary in 16.4.6), whatever version is installed.
 
 Nothing Critical was found. Sign-in, the OAuth surface, the admin API and tenant separation held under every probe: of Better Auth's 93 endpoints exactly the 15 allowlisted answer; another organisation's ids in paths, filters, cursors and idempotency keys returned nothing; forged tokens (`alg none`, key confusion, an id token, another audience) were refused everywhere; 720 commits of history hold no credential.
 
