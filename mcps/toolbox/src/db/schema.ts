@@ -8,8 +8,7 @@ export { evidenceEvents, evidencePayloads, intents } from "@answerable/mcp-postg
 export type Overrides = { disabled: string[]; policy_class: Record<string, "agent" | "controlled" | "human"> }
 
 const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" })
-// Every constraint is named as Postgres named it when the Toolbox's SQL file created these tables before drizzle, so that a database that file
-// built is a fresh drizzle one and its adoption (migrate.ts) is bookkeeping, not DDL.
+// Every constraint keeps the name Postgres gave it when the Toolbox's SQL file created these tables before drizzle, as the applied migrations made them.
 
 /** The providers mounted at some boot; the manifest in process is the source of truth, so a row only anchors the foreign keys below. */
 export const providers = pgTable("providers", {

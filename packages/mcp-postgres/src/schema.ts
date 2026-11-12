@@ -15,9 +15,8 @@ export const intentStatuses = ["prepared", "awaiting_approval", "committing", "c
 const literals = (values: readonly string[]) => sql.raw(values.map(value => `'${value}'`).join(", "))
 const timestamptz = () => timestamp({ withTimezone: true, mode: "date" })
 
-// The three tables every server with a database has. The columns are named as the SDK's types name their fields, and every constraint as Postgres
-// named it when this package's SQL files created these tables before drizzle, so that a database those files built is a fresh drizzle one and its
-// adoption (migrate.ts) is bookkeeping, not DDL.
+// The three tables every server with a database has. The columns are named as the SDK's types name their fields, and every constraint keeps the name
+// Postgres gave it when this package's SQL files created these tables before drizzle, as the applied migrations made them.
 
 /** Erasable bodies, such as previews, stored beside the chain, which holds each one only by its hash. A trigger allows no change but an erasure. */
 export const evidencePayloads = pgTable("evidence_payloads", {

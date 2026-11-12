@@ -36,7 +36,7 @@ It needs its registrations in ID and the `ADMIN_*` variables, which [its page](.
 | `src/platform.ts` | `readPlatform`: the platform organisation's id from ID's `GET /me`, refusing a machine client of any other organisation |
 | `src/environment.ts` | `readAdminEnvironment` |
 | `src/server.ts` | The entry point: `assertRuntimeRole` before it listens; `src/server.test.ts` starts it against a fake ID over HTTP, as a runtime login and as the owner, which it refuses |
-| `src/db/schema.ts`, `src/db/migrate.ts`, `drizzle/` | The drizzle schema, `@answerable/mcp-postgres`'s tables and no others; `drizzle/0000_initial.sql` is generated from it and `0001_evidence_chain.sql` is the package's trigger SQL; `migrate(db)` applies the folder through the package's migrator, adopting a database the file migrator built |
+| `src/db/schema.ts`, `src/db/migrate.ts`, `drizzle/` | The drizzle schema, `@answerable/mcp-postgres`'s tables and no others; `drizzle/0000_initial.sql` is generated from it and `0001_evidence_chain.sql` is the package's trigger SQL; `migrate(db)` applies the folder through the package's migrator |
 | `scripts/migrate.ts` | `db:migrate`: the migrations, then `configureRuntimeRole` with the package's `runtimeGrants` |
 | `scripts/test-migrate.ts` | `db:test:migrate`: the same on the test database, reset first; apart, so that the migration Job loads no test kit |
 

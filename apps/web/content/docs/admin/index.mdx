@@ -315,7 +315,7 @@ It prints `Admin MCP serving http://localhost:47520/mcp for platform organisatio
 
 The admin MCP migrates as the schema owner and serves as a restricted login, as [Answerable ID](/docs/id/onboard#first-run) and [the Toolbox](/docs/toolbox#database-roles) do.
 
-- **`db:migrate`** connects with `ADMIN_DATABASE_MIGRATION_URL`, applies the migrations with the same migrator as Answerable ID's, then grants its runtime role, `answerable_admin_runtime`, exactly what the admin MCP needs and takes back anything else. It runs again safely, and adopts a database the previous file migrator built.
+- **`db:migrate`** connects with `ADMIN_DATABASE_MIGRATION_URL`, applies the migrations with the same migrator as Answerable ID's, then grants its runtime role, `answerable_admin_runtime`, exactly what the admin MCP needs and takes back anything else. It runs again safely.
 - **The admin MCP** connects with `ADMIN_DATABASE_URL`, the runtime login, and refuses to listen when that login is a superuser, owns anything, or could change the evidence.
 - **The runtime role** reads and adds evidence, erases payload bodies, and moves and sweeps intents, and nothing else.
 
@@ -409,7 +409,6 @@ Every tool error is the envelope [MCP errors](/docs/mcp/errors) describes, with 
 | `503 {"status":"unavailable"}` from `/health` | The database does not answer | Check `ADMIN_DATABASE_URL` and Postgres |
 | Log `relation "evidence_events" does not exist`, and every call fails | The database is not migrated | Run `bun --env-file=.env run --filter @answerable/mcp-admin db:migrate` |
 | `db:migrate` fails with `Refusing to migrate: drizzle/<file> is not the migration this database applied…` | An applied migration was edited, regenerated or removed from before a later one | Restore the file, or recreate a disposable database |
-| `db:migrate` fails with `Refusing to adopt a database the file migrator built: …` | The database was migrated by the previous file migrator with other files than this version adopts | Drop its `public` schema, then run `db:migrate` again |
 | `Refusing to reset <database>; expected answerable_admin_test` | `db:test:migrate` points elsewhere | Point `ADMIN_TEST_DATABASE_URL` at `answerable_admin_test` |
 
 ## Not yet

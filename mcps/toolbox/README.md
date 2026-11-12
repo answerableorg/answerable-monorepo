@@ -37,7 +37,7 @@ It builds on three shared packages: `@answerable/mcp-platform` (its environment,
 | `src/search.ts` | Postgres full-text ranking over `capabilities.search` |
 | `src/environment.ts` | `readToolboxEnvironment` |
 | `src/db/schema.ts`, `drizzle/` | The drizzle schema: `@answerable/mcp-postgres`'s tables and the Toolbox's own (providers, capabilities, organisation_catalogue, host_clients); `drizzle/0000_initial.sql` is generated from it and `0001_evidence_chain.sql` is the package's trigger SQL. `db:generate` writes the next migration after a change; a test fails when the schema drifts |
-| `src/db/migrate.ts` | `migrate(db)`: the folder through the package's migrator, adopting a database the file migrator built; `runtimeGrants`, the runtime role's grants on every table |
+| `src/db/migrate.ts` | `migrate(db)`: the folder through the package's migrator; `runtimeGrants`, the runtime role's grants on every table |
 | `scripts/migrate.ts` | `db:migrate`: the migrations, then `configureRuntimeRole` with `runtimeGrants`, then every MCP of `MCPS_DECLARED` |
 | `scripts/test-migrate.ts` | `db:test:migrate`: the Toolbox's migrations on the test database, reset first; apart, so that the migration Job loads no test kit |
 | `src/server.ts` | The entry point: `assertRuntimeRole` and the serving login's assertion before the boot's ingest, the audit-log poller over the grants and the profiles; `src/server.test.ts` starts it against the test databases, as a runtime login, as the owner, and with a serving login without `USAGE` on a mounted MCP's schema, which it refuses |
