@@ -90,7 +90,7 @@ Each journey runs against real Answerable ID through `packages/acceptance` unles
 | Journey | Proves |
 | --- | --- |
 | J1 direct list | A fully entitled member sees exactly the catalogue's tools in deterministic order with honest annotations and `_meta`; `toolbox_whoami` returns the person, organisation and grants; a call succeeds; evidence and a span exist. |
-| J2 partial and denied | A member with a domain grant sees only that domain; a member with no Toolbox grant sees nothing and a call is the unknown-tool error; a disabled organisation stops at refresh. |
+| J2 partial and denied | A member with a domain grant sees only that domain; a member with no Toolbox grant sees nothing and a call is the unknown-tool error. That a disabled organisation stops at refresh is proved by the e2e journeys and the admin journeys' `organisations_disable`. |
 | J3 grant change without re-authorisation | An entitlement row changes in ID; within 60 s the same token lists the new tool and `list_changed` was published. |
 | J4 agent-class mutation | Prepare returns a semantic preview and a token; commit returns a receipt; a repeat returns the same receipt as replay; a changed target answers `INTENT_STALE`; an expired intent answers `INTENT_EXPIRED`. |
 | J5 controlled class | `toolbox_commit` answers `APPROVAL_REQUIRED`; `toolbox_commit_confirmed` with the matching summary commits; a wrong summary refuses. |

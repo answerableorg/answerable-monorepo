@@ -6,7 +6,7 @@ import { allowedScopes } from "@answerable/mcp-toolbox/grants"
 import type { Client } from "@modelcontextprotocol/client"
 import { decodeJwt } from "jose"
 import { z } from "zod"
-import { connect, intentSchema, launchBrowser, refreshRefused, refusal, serve, serveCallback, signIn, startId, step, tool, type Id, type OAuthSession } from "../index"
+import { connect, intentSchema, launchBrowser, refusal, serve, serveCallback, signIn, startId, step, tool, type Id, type OAuthSession } from "../index"
 import { startToolboxStack, toolboxResource as resource } from "../toolbox"
 
 const callback = "http://127.0.0.1:47603/callback"
@@ -262,12 +262,6 @@ describe("J3 grant change without re-authorisation", () => {
     step(`toolbox-gamma: tools/list_changed heard ${notified} ms after the entitlement, and the listening client's new list held e2e_identity_get`)
     expect(notified).toBeLessThan(60_000)
   })
-})
-
-test("J2: disabling gamma's organisation stops refresh with invalid_grant", async () => {
-  const { oauth, organizationId } = session("toolbox-gamma")
-  await id.admin("POST", `/organizations/${organizationId}/disable`)
-  await refreshRefused(oauth, clientId, resource)
 })
 
 describe("J10 evidence", () => {
