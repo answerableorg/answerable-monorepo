@@ -1,12 +1,12 @@
 import { createIdAdmin } from "@answerable/id-admin"
 import { createTracer, mcpDatabases, startAuditPoller } from "@answerable/mcp-platform"
-import { assertRuntimeRole, connect } from "@answerable/mcp-postgres"
+import { assertRuntimeRole, connect, servingPool } from "@answerable/mcp-postgres"
 import { readToolboxEnvironment } from "./environment"
 import { mounted } from "./mounted.generated"
 import { createToolbox } from "./toolbox"
 
 const { databaseUrl, mcps: databases, auth, origin, hostname, port, id: idConfig, otlpEndpoint } = readToolboxEnvironment(process.env)
-const db = connect(databaseUrl)
+const db = connect(databaseUrl, servingPool)
 const mcps = mcpDatabases(mounted, databases)
 // Serve as the restricted logins only, both checked before the boot's ingest writes anything: the owner could drop the evidence triggers, and a
 // serving login that owns the MCPs' tables would not be bound by their row-level security.

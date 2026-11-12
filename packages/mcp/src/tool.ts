@@ -58,6 +58,9 @@ type Shared = {
   name: string; description: string; input: z.ZodObject; example?: unknown; version?: string; scopes?: readonly string[]; deprecated?: Deprecation; timeoutMs?: number; errors?: readonly string[]
 }
 
+/** The longest a tool or a mutation may run, in milliseconds: the most `timeoutMs` may say. A pool a server serves through bounds its statements by it. */
+export const maxTimeoutMs = 55_000
+
 /** The rules tools and mutations share: name, description, example, timeout, version, deprecation, scopes and declared errors. */
 export function checkShared<Definition extends Shared>(noun: "Tool" | "Mutation", definition: Definition) {
   const named = checkToolName(definition.name)
@@ -71,7 +74,7 @@ export function checkShared<Definition extends Shared>(noun: "Tool" | "Mutation"
     if (!checked.success) throw new Error(`${label}: the example is not a valid input: ${violationsOf(checked.error).message}`)
   }
   const timeoutMs = definition.timeoutMs ?? 25_000
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 55_000) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimeoutMs) {
     throw new Error(`${label}: timeoutMs ${timeoutMs} must be a whole number of milliseconds from 1 to 55,000`)
   }
   if (definition.version !== undefined && !isDate(definition.version)) throw new Error(`${label}: version "${definition.version}" must be a date, YYYY-MM-DD`)

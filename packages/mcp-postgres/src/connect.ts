@@ -9,6 +9,20 @@ export type Executor = NodePgDatabase | Parameters<Parameters<NodePgDatabase["tr
 export type ConnectOptions = Omit<PoolConfig, "connectionString" | "ssl">
 
 /**
+ * The bounds of every pool a server serves through, its own database's and the MCPs': at most 10 connections; a borrow that waits 5 seconds for one
+ * fails instead of queueing for ever; and a statement, or a transaction left idle, ends 56 seconds in, a second after the longest a tool may run
+ * (`@answerable/mcp`'s `maxTimeoutMs`), so a query a timed-out call left behind gives its connection back. Each connection sends them as session
+ * settings when it opens, so no role, provisioning or migration changes; a migration connects with options of its own.
+ */
+export const servingPool = Object.freeze({
+  max: 10,
+  connectionTimeoutMillis: 5_000,
+  // A number, not maxTimeoutMs + 1_000: this package imports @answerable/mcp as types only, so the ops image needs no packages/mcp. A test holds the two together.
+  statement_timeout: 56_000,
+  idle_in_transaction_session_timeout: 56_000,
+}) satisfies ConnectOptions
+
+/**
  * Keep a lost connection from ending the process. `pg` reports one as an `error` event, on the pool for an idle client as well as on the client itself,
  * and an event with no listener throws. The next query takes a new connection. `label` names the package in the log line, which carries the error's class
  * and code and never its message, which can hold credentials.

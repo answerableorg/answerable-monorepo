@@ -82,7 +82,7 @@ The tests need the development Postgres on port 47432. A sandbox that cannot rea
 | **Where its tables live** | Schema `acme` in the database `answerable_mcps` | Schema `acme` in a database of its own, `answerable_mcp_acme` |
 | **Chosen by** | Default | `--database own` when you make it, or `"database": "own"` in `mcp.json` |
 | **Logins and Secrets it adds** | None | Two logins, an owner and a runtime login, and two Kubernetes Secrets, `mcp-acme-database-owner` and `mcp-acme-database` |
-| **Connections it adds** | None | Every server that serves it opens one more pool: up to 10 connections for each replica |
+| **Connections it adds** | None | Every server that serves it opens one more pool: up to 10 connections for each replica, each waiting at most 5 seconds for one and running no statement past 56 seconds |
 | **Pick it when** | Almost always | The MCP needs hard isolation, a size or a maintenance window of its own, or a client asks for it |
 
 **What `own` isolates, and what it does not.** Its tables are in a database of their own, which only its two logins, and the instance's administrator, may connect to: the shared database's logins cannot reach them, and no other MCP's migration can alter them. It does not leave the instance: the database is on the same Postgres instance as every other, and shares its CPU, memory, connection limit and backups. And its runtime URL, with that login's password, is in the environment of the process that serves it, the Toolbox, which serves every MCP: code in that process can read it.

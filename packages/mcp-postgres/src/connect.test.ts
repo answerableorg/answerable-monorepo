@@ -3,10 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sql } from "drizzle-orm"
+import { maxTimeoutMs } from "@answerable/mcp"
 import { Client } from "pg"
-import { connect } from "./connect"
+import { connect, servingPool } from "./connect"
 import { database } from "./test/database"
-import { connectionCutter } from "./testing"
+import { connectionCutter, refusalOf } from "./testing"
 
 // A pg pool connects on the first query, so nothing here opens a connection: a client made from the pool's options shows what pg read from the
 // URL, which is what every client of the pool connects with.
@@ -92,3 +93,42 @@ test("a connection lost while a transaction holds it fails that transaction's ne
   expect((await db.execute(sql`select 1 as served`)).rows).toEqual([{ served: 1 }])
   expect(logged()).toEqual([["[mcp-postgres] database connection lost", { name: "Error" }]])
 }))
+
+test("the serving bounds reach every connection as session settings: a statement a second past the longest tool, and a transaction left idle as long", async () => {
+  const db = connect(database.url, servingPool)
+  try {
+    expect(db.$client.options).toMatchObject({ max: 10, connectionTimeoutMillis: 5_000 })
+    expect((await db.execute(sql`select current_setting('statement_timeout') as statement, current_setting('idle_in_transaction_session_timeout') as idle`)).rows)
+      .toEqual([{ statement: `${(maxTimeoutMs + 1_000) / 1000}s`, idle: `${(maxTimeoutMs + 1_000) / 1000}s` }])
+  } finally {
+    await db.$client.end()
+  }
+})
+
+test("a statement past the statement timeout is cancelled, and its connection serves the next query at once", async () => {
+  // The serving bound shortened, so that the test does not wait the 56 seconds a tool's query may take.
+  const db = connect(database.url, { ...servingPool, max: 1, statement_timeout: 200 })
+  try {
+    const started = performance.now()
+    expect(await refusalOf(db.execute(sql`select pg_sleep(5)`))).toBe("canceling statement due to statement timeout")
+    expect(performance.now() - started).toBeLessThan(2_000)
+    expect((await db.execute(sql`select 1 as served`)).rows).toEqual([{ served: 1 }])
+  } finally {
+    await db.$client.end()
+  }
+})
+
+test("with every connection of the serving pool held, the next borrow fails after five seconds instead of queueing for ever, and one released serves it", async () => {
+  const db = connect(database.url, servingPool)
+  const held = await Promise.all(Array.from({ length: servingPool.max }, () => db.$client.connect()))
+  try {
+    const started = performance.now()
+    await expect(db.$client.query("select 1")).rejects.toThrow("timeout exceeded when trying to connect")
+    expect(performance.now() - started).toBeGreaterThanOrEqual(servingPool.connectionTimeoutMillis - 50)
+    held.pop()!.release()
+    expect((await db.execute(sql`select 1 as served`)).rows).toEqual([{ served: 1 }])
+  } finally {
+    for (const client of held) client.release()
+    await db.$client.end()
+  }
+}, 15_000)

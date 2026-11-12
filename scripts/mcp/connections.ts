@@ -1,5 +1,6 @@
 // The connection budget of docs/12-deployment.md (Database), as numbers: what the servers can open at their autoscalers' ceilings in each
 // environment, against the database's limit. bun mcp check warns from these when MCPs with a database of their own would pass it.
+import { servingPool } from "@answerable/mcp-postgres"
 import type { Declaration } from "./workspace"
 
 export const budget = {
@@ -10,8 +11,8 @@ export const budget = {
     staging: { id: 4, toolbox: 3, adminMcp: 3 },
     production: { id: 6, toolbox: 4, adminMcp: 4 },
   },
-  /** ID's pool, DATABASE_POOL_MAX; every other pool is pg's default size. */
-  pool: { id: 20, other: 10 },
+  /** ID's pool, DATABASE_POOL_MAX; every other pool is `servingPool`'s (`@answerable/mcp-postgres`). */
+  pool: { id: 20, other: servingPool.max },
 } as const
 
 type Environment = keyof typeof budget.replicas

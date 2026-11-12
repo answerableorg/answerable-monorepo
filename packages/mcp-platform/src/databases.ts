@@ -1,5 +1,5 @@
 import { callerOrganisation, type Mount, type Provider } from "@answerable/mcp"
-import { assertServingLogin, mcpDatabase, surviveLostConnections } from "@answerable/mcp-postgres"
+import { assertServingLogin, mcpDatabase, servingPool, surviveLostConnections } from "@answerable/mcp-postgres"
 import { drizzle } from "drizzle-orm/node-postgres"
 import { Pool } from "pg"
 
@@ -14,14 +14,14 @@ export type Declared = Readonly<{ provider: Provider; serve: Serve } & ({ databa
 
 /**
  * The databases of the MCPs a server serves, from its generated list and its configuration: one pool to the shared database at `shared`, as the
- * server's serving login, and one pool to each `own` MCP's database at `own[variable]`, as that MCP's runtime login. Each MCP with a `database`
+ * server's serving login, and one pool to each `own` MCP's database at `own[variable]`, as that MCP's runtime login, each with `servingPool`'s bounds. Each MCP with a `database`
  * gets its `db`, made once, through `mcpDatabase`, with the organisation of the call running (`callerOrganisation`). Returns `mount`, each MCP
  * with where it is served, for `createToolbox`; `pools`, by name (`mcps`, and each own MCP's name), for `/health`; `assert()`, `assertServingLogin`
  * on each pool for the MCPs it serves, to await before listening; and `close()`.
  */
 export function mcpDatabases(declared: readonly Declared[], { shared, own }: { shared: string; own: Readonly<Record<string, string | undefined>> }) {
-  // A lost connection costs a log line and not every MCP this process serves.
-  const pooled = (connectionString: string) => surviveLostConnections(new Pool({ connectionString }), "mcp-platform")
+  // A lost connection costs a log line and not every MCP this process serves; a slow tool holds a connection no longer than the serving bounds.
+  const pooled = (connectionString: string) => surviveLostConnections(new Pool({ ...servingPool, connectionString }), "mcp-platform")
   const pool = pooled(shared)
   const owned = new Map(declared.flatMap(entry => {
     if (entry.database === "shared") return []

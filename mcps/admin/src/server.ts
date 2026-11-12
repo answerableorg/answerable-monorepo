@@ -1,6 +1,6 @@
 import { createIdAdmin } from "@answerable/id-admin"
 import { startAuditPoller } from "@answerable/mcp-platform"
-import { assertRuntimeRole, connect } from "@answerable/mcp-postgres"
+import { assertRuntimeRole, connect, servingPool } from "@answerable/mcp-postgres"
 import { createAdminMcp } from "./admin"
 import { readAdminEnvironment } from "./environment"
 import { readPlatform } from "./platform"
@@ -11,7 +11,7 @@ const platform = await readPlatform(id).catch((error: Error) => {
   console.error(`The admin MCP cannot start: ${error.message}`)
   process.exit(1)
 })
-const db = connect(databaseUrl)
+const db = connect(databaseUrl, servingPool)
 // Serve as the restricted runtime login only: the owner could drop the evidence triggers.
 await assertRuntimeRole(db).catch(async (error: Error) => {
   await db.$client.end()

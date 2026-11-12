@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, spyOn, test } from "bun:test"
 import { createMcpServer, defineProvider, defineTool, type Mount } from "@answerable/mcp"
 import { createTestMcp } from "@answerable/mcp/testing"
+import { servingPool } from "@answerable/mcp-postgres"
 import { connectionCutter } from "@answerable/mcp-postgres/testing"
 import { z } from "zod"
 import { mcpDatabases, type Declared } from "./databases"
@@ -46,6 +47,16 @@ test("a shared MCP's db borrows from the one pool to the shared database, as the
   expect([first!.notes, second!.notes]).toEqual([1, 0])
   expect([first!.role, second!.role]).toEqual([new URL(shared.url).username, new URL(shared.url).username])
   expect(pools).toEqual(["mcps"])
+})
+
+test("every pool, the shared database's and each own MCP's, has the serving bounds", async () => {
+  const mcps = mcpDatabases([{ provider: pltfix, serve: "toolbox", database: "own", variable: "PLTFIX_DATABASE_URL" }], { shared: shared.url, own: { PLTFIX_DATABASE_URL: own.url } })
+  try {
+    for (const pool of Object.values(mcps.pools)) expect(pool.options).toMatchObject(servingPool)
+    expect(Object.keys(mcps.pools)).toEqual(["mcps", "pltfix"])
+  } finally {
+    await mcps.close()
+  }
 })
 
 test("an own MCP's db borrows from a pool of its own, as its own runtime login, with the same isolation", async () => {
