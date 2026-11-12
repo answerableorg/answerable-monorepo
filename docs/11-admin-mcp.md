@@ -124,7 +124,7 @@ One hash-chained chain, the platform organisation's, in `answerable_admin` (`@an
 | --- | --- | --- |
 | `capability.completed` | A call ran: a read, a prepare or a commit | `outcome`, `error_code`, `execution_id`, `request_id`, `upstream`: `toolbox` for `toolbox_enable`'s prepare, otherwise `id` |
 | `capability.denied` | A tool was refused, or a critical operation found the sign-in too old | `reason`: `not_platform`, `missing_scope`, `role_below_minimum` or `stale_authentication`, with what decided it |
-| `intent.prepared`, `intent.committed`, `receipt.issued`, `intent.stale`, `intent.expired` | The intent's transitions | `intent_id`, `receipt_id`; the preview as an erasable payload |
+| `intent.prepared`, `intent.committed`, `receipt.issued`, `intent.stale`, `intent.expired` | The intent's transitions | `intent_id`, `receipt_id`; the preview as a payload, which nothing erases yet ([`08`](08-capability-platform.md#evidence-audit-and-telemetry)) |
 
 Each row names the person (`actor_id`, their user id) and the host (`client_id`). Inputs and results are not recorded. The chain verifies with `createEvidence(db).verify(platformOrganisationId)`; A7 verified 108 to 109 events in three runs. Two gaps, both in the SDK (`Q-SDK-ALLOW-EVIDENCE`): a call refused because ID did not answer the role read leaves no row, since the SDK answers it before `wrapCall`; and a commit call's row names `upstream: "id"` whichever tool the intent is for, since `wrapCall` cannot tell.
 

@@ -230,7 +230,7 @@ const [{ payload_ref }] = await db`select payload_ref from evidence_events where
 await evidence.erase(payload_ref)
 ```
 
-Each `intent.prepared` stores the intent's preview in `evidence_payloads`; the event holds its id in `payload_ref` and its SHA-256 in `payload_hash`, which the chain covers. `erase(payloadId)` removes the body for good: `payload_hash` stays, and the chain still verifies. A trigger refuses any other change to a payload, and its deletion. The intent keeps its own copy of the preview until [the intent store](#mutations-through-the-toolbox) deletes the intent.
+Each `intent.prepared` stores the intent's preview in `evidence_payloads`; the event holds its id in `payload_ref` and its SHA-256 in `payload_hash`, which the chain covers. `erase(payloadId)` removes the body for good: `payload_hash` stays, and the chain still verifies. **Not yet:** anything that calls it. Neither ID erasing a person nor a retention period erases a payload, so a preview's body, with the client matter and personal data it holds, stays. A trigger refuses any other change to a payload, and its deletion. The intent keeps its own copy of the preview until [the intent store](#mutations-through-the-toolbox) deletes the intent.
 
 **Not yet:** nightly verification, publishing chain heads outside the database, and retention.
 
