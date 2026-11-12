@@ -4,8 +4,9 @@ import type { z } from "zod";
 import type { AppEnvironment } from "./context.ts";
 import { problem, ProblemError } from "./problem.ts";
 
-// Hono's JSON validator reads a body only under this Content-Type (its own
-// pattern) and otherwise validates {}, which a schema of optional fields accepts.
+// Hono's JSON validator reads a body only under a JSON media type and otherwise
+// validates {}, which a schema of optional fields accepts. This pattern is
+// stricter than Hono's: a malformed parameter list is refused, never read.
 const jsonContentType =
   /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i;
 
