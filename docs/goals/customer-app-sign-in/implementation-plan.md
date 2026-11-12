@@ -1,12 +1,12 @@
 # Customer app sign-in: implementation plan
 
-30 October 2026. Implementation authorised: staging only, with no customers and no production deployment. W1/W2 and the local staging definition of done below are complete in Answerable, with all listed local verification gates passing. W3 requires the actual OpenCloud fork. Existing-account migration is unnecessary for this clean staging rollout; production lifecycle work remains separate future scope. See the [implementation evidence](../../../reports/customer-app-sign-in-implementation.md).
+30 October 2026. Implementation authorised: staging only, with no customers and no production deployment. W1/W2 and the local staging definition of done below are complete in Answerable, with all listed local verification gates passing. W3 requires the actual OpenCloud fork. Existing-account migration is unnecessary for this clean staging rollout; production lifecycle work remains separate future scope. The implementation evidence was written to `reports/customer-app-sign-in-implementation.md`, which was never committed: no copy is in git.
 
 ## Scope and authority
 
 The user first requested this plan and report before coding, then explicitly authorised implementation and clarified that no customers or production deployment exist. This permits application changes and local tests for the staging integration. It does not request a cloud deployment or agent-pushed release tag. Historical future work below records the broader release design; it does not require building migration tools for a non-existent customer population.
 
-Baseline: Answerable checkout `ff3018a3a37ec90baefa0165d1cfc439341e0c6e`, the [29 October audit](../../../reports/customer-app-sign-in-audit.md), the current ID design and release checklist. Pinned upstream snapshots are evidence, not substitutes for the actual customer forks. Record their URLs, deployed SHAs, lockfiles and image digests before editing those forks.
+Baseline: Answerable checkout `ff3018a3a37ec90baefa0165d1cfc439341e0c6e`, the 29 October audit (`reports/customer-app-sign-in-audit.md`, never committed: no copy is in git), the current ID design and release checklist. Pinned upstream snapshots are evidence, not substitutes for the actual customer forks. Record their URLs, deployed SHAs, lockfiles and image digests before editing those forks.
 
 ## Current staging definition of done
 

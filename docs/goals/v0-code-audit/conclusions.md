@@ -61,4 +61,4 @@ The `native-*` wrappers, the exact-pair evaluator, the machine audit event, the 
 - `register` after the root lock needs a hand-placed staff token; its own machine client is `Q-OPS-REGISTER-CLIENT`, in the civo-deploy goal (D13).
 - `Q-REFRESH-PARALLEL` is now a change of one constant; `Q-ADMIN-API-RATE-LIMIT` stays open for `/api/admin`; `Q-AID-RECHECK` starts from no stored token.
 - Measured, not proposed: `listTargetAccess` reads every tenant's users per page (19 ms at 10,000 users), member search scans all users (7.8 ms), the action-filtered audit list sorts that action's history (20 ms); a `FOR SHARE` on a hot row writes 174 B of WAL and 969 multixacts per 1,000 concurrent transactions.
-- Found by the docs pass and left for a later change: `apps/id/src/runtime.test.ts` cites `reports/answerable-id-request-reuse.md`, which no longer exists.
+- Found by the docs pass and left for a later change: `apps/id/src/runtime.test.ts` cited `reports/answerable-id-request-reuse.md`, which no longer exists. The cite has since gone from the test.
