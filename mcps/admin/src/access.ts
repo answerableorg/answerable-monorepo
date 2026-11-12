@@ -222,7 +222,7 @@ export function accessWrites(writes: Writes, standaloneOrigin: string) {
             changes: [{ path: `entitlements[${entitlementId}].status`, from: held.status, to }],
             effects: ["permission_change" as const],
             warnings: [
-              ...(to === "disabled" ? ["A token already issued keeps its scopes until it expires; a server that reads access live, such as the Toolbox, drops it within its cache time."] : []),
+              ...(to === "disabled" ? ["A token already issued keeps its scopes until it expires, up to 900 seconds. The Toolbox's hub reads access live and drops it within 60 seconds; an MCP served on its own URL reads only the token's scopes, so it keeps serving them until the token expires."] : []),
               noPrecondition(words.write),
             ],
           },

@@ -11,6 +11,8 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 const firms = (user: User) => (user.memberships.length ? user.memberships.map(item => (item.effective ? item.slug : `${item.slug} (not in force)`)).join(", ") : "no organisation")
 // What a stopped person still has, which no write to ID reaches.
 const outlives = "A service token already issued lives to its expiry, and each app's own session is the app's to end."
+// How soon a disabled person's token stops working at an MCP, which the token alone does not say.
+const disabledEverywhere = "Every MCP the Toolbox serves, in its hub or on its own URL, refuses them within 60 seconds, since it reads the person from Answerable ID on each call; another server that checks only the token serves it until it expires, up to 900 seconds for an MCP's token."
 
 /**
  * The writes that stop someone, each naming the person by address, which names one user, and one member per organisation: `users.disable`, `users.enable`
@@ -49,6 +51,7 @@ export function userWrites({ calls, role, fresh, platform, organisation, protect
           warnings: [
             `Reaches every organisation, not one: ${firms(user)}. Answerable ID ends their ${plural(user.sessionCount, "session")}, revokes their grants and stored tokens, and refuses their sign-in at each organisation.`,
             outlives,
+            disabledEverywhere,
             "users_enable restores the status, not the revoked sessions, grants or tokens: the person signs in again.",
             ...staffNote(user),
             ...(asSelf(user, context) ? ["You are disabling yourself: your sessions end with it, and only another admin can enable you again."] : []),

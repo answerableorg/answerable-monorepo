@@ -74,7 +74,8 @@ test("users_disable names the person and every organisation it reaches, commits 
     effects: ["cascade_delete"],
     warnings: [
       expect.stringMatching(/^Reaches every organisation, not one: (newco, bare|bare, newco)\. Answerable ID ends their 2 sessions, revokes their grants and stored tokens, and refuses their sign-in at each organisation\.$/),
-      outlives, "users_enable restores the status, not the revoked sessions, grants or tokens: the person signs in again.", noPrecondition("disabling a user"),
+      outlives, "Every MCP the Toolbox serves, in its hub or on its own URL, refuses them within 60 seconds, since it reads the person from Answerable ID on each call; another server that checks only the token serves it until it expires, up to 900 seconds for an MCP's token.",
+      "users_enable restores the status, not the revoked sessions, grants or tokens: the person signs in again.", noPrecondition("disabling a user"),
     ],
     quantities: [],
   })

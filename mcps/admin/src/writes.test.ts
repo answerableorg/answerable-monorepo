@@ -289,7 +289,7 @@ test("access_revoke disables an entitlement, reversibly, naming who loses what, 
     summary: `Revoke e2e on ${toolboxMcp} from group “Engineers” in organisation “Newco” (newco)`,
     changes: [{ path: `entitlements[${grouped.id}].status`, from: "active", to: "disabled" }], effects: ["permission_change"],
     warnings: [
-      "A token already issued keeps its scopes until it expires; a server that reads access live, such as the Toolbox, drops it within its cache time.",
+      "A token already issued keeps its scopes until it expires, up to 900 seconds. The Toolbox's hub reads access live and drops it within 60 seconds; an MCP served on its own URL reads only the token's scopes, so it keeps serving them until the token expires.",
       noPrecondition("disabling an entitlement"),
     ],
     quantities: [],

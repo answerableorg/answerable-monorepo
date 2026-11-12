@@ -21,7 +21,7 @@ What you do not get for free is a decision about who may use your MCP. Shipping 
 
 None of this is code of yours. [How Answerable ID works](/docs/id) explains the token, and [Providers and servers](/docs/mcp/servers#the-server) what the server does with it.
 
-**One limit.** A server checks tokens without calling Answerable ID, so a token already issued to a disabled organisation works until it expires. Refresh stops at once. Tokens for an MCP last 900 seconds.
+**One limit.** A server checks tokens without calling Answerable ID, so a token already issued keeps what it carries until it expires: tokens for an MCP last 900 seconds. A token of a disabled organisation works until then; refresh stops at once. An MCP on its own URL (`standalone` or `both`) reads only the token's scopes, so a scope `access_revoke` takes away reaches it within 900 seconds, against 60 seconds in the Toolbox's hub, which reads access live. A person `users_disable` stops, or whose membership ends, is refused within 60 seconds wherever the Toolbox serves the MCP, because each call reads the person from Answerable ID ([What your tool receives](#what-your-tool-receives)).
 
 ## Who sees which tool
 

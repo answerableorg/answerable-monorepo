@@ -5,7 +5,7 @@ import { found, type IdAdmin } from "@answerable/id-admin"
 // The fields of ID's member and organisation reads that a profile needs (apps/id/openapi.admin.json).
 const window = { validFrom: z.string().nullable(), validUntil: z.string().nullable() }
 const memberRead = z.object({
-  name: z.string(), email: z.string(), effective: z.boolean(),
+  name: z.string(), email: z.string(), status: z.enum(["active", "disabled"]), effective: z.boolean(),
   groups: z.array(z.object({ groupId: z.string(), slug: z.string(), name: z.string(), ...window })),
 })
 const organisationRead = z.object({ name: z.string(), slug: z.string() })
@@ -32,7 +32,7 @@ function known<Value>(read: Value | undefined): Value {
  * Each read is cached for `ttlMs` (60 seconds), per member and per organisation; concurrent calls share one read. When ID does not answer, the last
  * value is served for up to `staleMs` (an hour) after it expired; with none, the call rejects and the server answers `UPSTREAM_UNAVAILABLE`.
  * `groups` are the member's groups in force now: `validFrom` unset or past, `validUntil` unset or future. A member who is not in force
- * (`effective: false`), or whom ID no longer knows (404), is refused with `PERMISSION_DENIED`, and never served from an old value. `invalidate(organisationIds, userIds)` takes the poller's events: an organisation
+ * (`effective: false`), whose user is disabled (`status: disabled`), or whom ID no longer knows (404), is refused with `PERMISSION_DENIED`, and never served from an old value. `invalidate(organisationIds, userIds)` takes the poller's events: an organisation
  * drops it and its members; a user, named by an event of no organisation, drops that user in every organisation.
  *
  * @example
@@ -74,6 +74,8 @@ export function createIdProfiles(id: IdAdmin, { ttlMs = 60_000, staleMs = 3_600_
       cached(members, `${organizationId}/${membershipId}`, { organisationId: organizationId, userId }, async () => memberRead.parse(known(await found(id.get(`/organizations/${organizationId}/members/${membershipId}`))))),
       cached(organisations, organizationId, { organisationId: organizationId }, async () => organisationRead.parse(known(await found(id.get(`/organizations/${organizationId}`))))),
     ])
+    // The person, not the membership: users_disable leaves every membership in force and disables the user.
+    if (member.status === "disabled") throw new ToolError("PERMISSION_DENIED", "Your account is disabled in Answerable ID; ask an administrator of your organisation")
     if (!member.effective) throw new ToolError("PERMISSION_DENIED", "Your membership of this organisation is not in force; ask an administrator of the organisation")
     const at = now()
     const inForce = ({ validFrom, validUntil }: Member["groups"][number]) => (validFrom === null || Date.parse(validFrom) <= at) && (validUntil === null || Date.parse(validUntil) > at)

@@ -54,6 +54,18 @@ test("a member who is not in force is refused with PERMISSION_DENIED", async () 
   expect(ada.effective).toBe(true)
 })
 
+test("a member whose user is disabled is refused with PERMISSION_DENIED once the cache drops them, which a user event does at once", async () => {
+  const { profiles, ada, principal, advance } = setup()
+  await profiles(principal)
+  ada.status = "disabled" // users_disable: ID keeps the membership in force and disables the person
+  advance(1)
+  await profiles(principal)
+  profiles.invalidate([], [String(ada.userId)])
+  await expect(profiles(principal)).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Your account is disabled in Answerable ID; ask an administrator of your organisation" })
+  advance(3_600_000)
+  await expect(profiles(principal)).rejects.toMatchObject({ code: "PERMISSION_DENIED" })
+})
+
 test("a member or an organisation ID no longer knows is refused with PERMISSION_DENIED, even with an old value in the cache", async () => {
   const { profiles, acme, ada, principal, advance } = setup()
   const gone = profiles(testPrincipal({ organizationId: acme.id, membershipId: Bun.randomUUIDv7() }))
