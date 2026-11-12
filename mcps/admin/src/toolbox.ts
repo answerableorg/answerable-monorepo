@@ -66,7 +66,7 @@ export type ToolboxAdmin = ReturnType<typeof createToolboxAdmin>
  * resource configured it stays listed and answers `PRECONDITION_FAILED` saying what to set.
  */
 export function toolboxWrites(writes: Writes, toolbox: ToolboxAdmin | undefined) {
-  const { calls, role, organisation } = writes
+  const { calls, role, organisation, fresh } = writes
   const enable = role("admin", defineMutation({
     name: "toolbox.enable", risk: "normal", scopes, errors, effects: ["permission_change", "external_call"],
     description: `Prepare enabling the Toolbox for an organisation: the named providers in its catalogue, and for each named host client what Answerable ID needs so that its people can sign in to the Toolbox from it. ${commitWith} What each person may use still needs access_grant of grant strings. Safe to repeat.`,
@@ -77,6 +77,7 @@ export function toolboxWrites(writes: Writes, toolbox: ToolboxAdmin | undefined)
     }),
     output: z.object({ created: z.array(z.string()).describe("What the Toolbox made"), existing: z.array(z.string()).describe("What it found already in place") }),
     async prepare(input, context) {
+      fresh(context.principal)
       if (!toolbox) {
         throw precondition("The admin MCP does not know the Toolbox: set ADMIN_TOOLBOX_ADMIN_RESOURCE to the Toolbox's admin resource, such as http://localhost:47400/admin, and restart it", {
           variable: "ADMIN_TOOLBOX_ADMIN_RESOURCE",

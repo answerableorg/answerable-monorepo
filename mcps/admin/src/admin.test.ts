@@ -5,7 +5,7 @@ import { errorOf, type TestMcp } from "@answerable/mcp/testing"
 import { connect, createEvidence } from "@answerable/mcp-postgres"
 import { rowsOf } from "@answerable/mcp-postgres/testing"
 import { createAdminMcp } from "./admin"
-import { createAdmin, resource, seed, standaloneOrigin, type FakeId } from "./test/admin"
+import { createAdmin, resource, seed, standaloneOrigin, toolboxMcp, type FakeId } from "./test/admin"
 import { serving } from "./test/database"
 
 const login = await serving()
@@ -326,6 +326,40 @@ test("sso_set changes how a firm signs in, so it needs a recent directory sign-i
     operator.signedInAt(time)
     expect(await refusal(client, "sso_set", args), `signed in at ${time}`).toMatchObject({ code: "ADMIN_REAUTHENTICATION_REQUIRED", details: { upstream_auth_time: time, max_age_seconds: 60 } })
   }
+  expect(id.received.filter(({ request }) => !request.startsWith("GET"))).toEqual([])
+})
+
+test("every write that lets people in needs a recent directory sign-in, at prepare and at commit, of an admin; revoking access never waits for one", async () => {
+  const { staff, id } = await admin({ freshSeconds: 60 })
+  const { newco, engineers, ada } = seed(id)
+  const grace = id.member(newco.id, { email: "grace@newco.example", name: "Grace Hopper" })
+  const retired = id.entitlement(newco.id, { memberId: grace.id, resource: toolboxMcp, scopes: ["e2e"], status: "disabled" })
+  const active = id.entitlement(newco.id, { memberId: ada.id, resource: toolboxMcp, scopes: ["e2e/records"] })
+  id.resource(`${standaloneOrigin}/acme/mcp`, ["acme:read", "offline_access"])
+  id.client("claude-code-acme")
+  const letIn: [string, Record<string, unknown>][] = [
+    ["access_grant", { organizationId: newco.id, principal: { kind: "group", id: engineers.id }, resource: toolboxMcp, scopes: ["e2e"] }],
+    ["access_enable", { organizationId: newco.id, entitlementId: retired.id }],
+    ["groups_addmember", { organizationId: newco.id, groupId: engineers.id, memberId: grace.id }],
+    ["standalone_enable", { organizationId: newco.id, mcp: "acme", everyone: true }],
+    ["toolbox_enable", { organizationId: newco.id, hostClientIds: ["claude-code-toolbox"], providers: ["e2e"] }],
+  ]
+  const operator = staff(["admin", "answerable-admin"])
+  const client = await operator.connect()
+  const now = Math.floor(Date.now() / 1000)
+  for (const time of [now - 120, null]) {
+    operator.signedInAt(time)
+    for (const [name, args] of letIn) {
+      expect(await refusal(client, name, args), `${name} signed in at ${time}`).toMatchObject({ code: "ADMIN_REAUTHENTICATION_REQUIRED", details: { upstream_auth_time: time, max_age_seconds: 60 } })
+    }
+    expect((await prepared(client, "access_revoke", { organizationId: newco.id, entitlementId: active.id })).preview.summary)
+      .toBe("Revoke e2e/records on https://toolbox.test/mcp from ada@newco.example in organisation “Newco” (newco)")
+  }
+  operator.signedInAt(now)
+  const intents: Prepared[] = []
+  for (const [name, args] of letIn) intents.push(await prepared(client, name, args))
+  setSystemTime(Date.now() + 61_000)
+  for (const intent of intents) expect(errorOf(await confirm(client, intent)), intent.preview.summary).toMatchObject({ code: "ADMIN_REAUTHENTICATION_REQUIRED" })
   expect(id.received.filter(({ request }) => !request.startsWith("GET"))).toEqual([])
 })
 

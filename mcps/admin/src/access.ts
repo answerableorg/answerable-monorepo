@@ -21,7 +21,7 @@ function standaloneNeedsClient(resource: string, origin: string) {
 
 /** The writes on who may use what in an organisation: its groups, their members, and its entitlements; `standaloneOrigin` is that of the MCPs served alone, whose resources a grant must name a client for. */
 export function accessWrites(writes: Writes, standaloneOrigin: string) {
-  const { calls, role, organisation } = writes
+  const { calls, role, organisation, fresh } = writes
   const missingGroup = (organizationId: string, id: string) => `Answerable ID has no group ${id} in organisation ${organizationId}; groups_list lists them`
   const group = (organizationId: string, id: string, context: ToolContext) =>
     calls.need<Group>(`/organizations/${organizationId}/groups/${id}`, context, missingGroup(organizationId, id))
@@ -69,6 +69,7 @@ export function accessWrites(writes: Writes, standaloneOrigin: string) {
     input: z.object({ organizationId, groupId, memberId, validUntil: z.iso.datetime({ offset: true }).optional().describe("When the membership ends, ISO 8601; omit for no end") }),
     output: z.object({ groupId: z.uuid(), memberId: z.uuid(), operationId: z.uuid() }),
     async prepare({ organizationId: id, groupId: groupOf, memberId: person, validUntil }, context) {
+      fresh(context.principal)
       const { organisation: row } = await organisation(id, context)
       const joined = await group(id, groupOf, context)
       const who = await member(id, person, context)
@@ -143,6 +144,7 @@ export function accessWrites(writes: Writes, standaloneOrigin: string) {
     }),
     output: z.object({ entitlementId: z.uuid(), operationId: z.uuid() }),
     async prepare({ organizationId: id, principal, resource, clientId, scopes: asked }, context) {
+      fresh(context.principal)
       if (principal.kind === "organization" && principal.id !== undefined) throw invalid("principal.id", "Omit principal.id when the principal is the whole organization")
       if (principal.kind !== "organization" && principal.id === undefined) throw invalid("principal.id", `Name the ${principal.kind}'s id in principal.id`)
       const unnamed = clientId ? undefined : standaloneNeedsClient(resource, standaloneOrigin)
@@ -204,6 +206,8 @@ export function accessWrites(writes: Writes, standaloneOrigin: string) {
       input: z.object({ organizationId, entitlementId: z.uuid().describe("The entitlement's id, from access_list") }),
       output: z.object({ entitlementId: z.uuid(), operationId: z.uuid() }),
       async prepare({ organizationId: id, entitlementId }, context) {
+        // Granting again lets people in; revoking stops them, and never waits for a sign-in (fresh.ts).
+        if (to === "active") fresh(context.principal)
         const { organisation: row } = await organisation(id, context)
         const { body: held, etag } = await calls.versioned<Entitlement>(`/organizations/${id}/entitlements/${entitlementId}`, context,
           `Answerable ID has no entitlement ${entitlementId} in organisation ${id}; access_list lists them`)

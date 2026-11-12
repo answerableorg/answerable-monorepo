@@ -16,7 +16,7 @@ const existed = (error: unknown) => error instanceof ToolError && (error.details
  * `claude-code-<name>`: the resource `<origin>/<name>/mcp` and the client that the deploy's register Job registered.
  */
 export function standaloneWrites(writes: Writes, origin: string) {
-  const { calls, role, organisation } = writes
+  const { calls, role, organisation, fresh } = writes
   const enable = role("admin", defineMutation({
     name: "standalone.enable", risk: "normal", scopes, errors, effects: ["permission_change"],
     description: `Prepare giving an organisation access to a standalone MCP, which the Toolbox serves at its own URL: for its host client, claude-code-<name>, its link to the MCP, the organisation's sign-in and MCP capabilities for both grant kinds, and the sign-in entitlement for everyone in it. ${commitWith} People then need the MCP's scopes through that host client: access_grant them with clientId set to it, to the organisation, a group or a person, or pass everyone: true to grant them to the whole organisation in the same intent. Undo it with access_revoke. Safe to repeat.`,
@@ -27,6 +27,7 @@ export function standaloneWrites(writes: Writes, origin: string) {
     }),
     output: z.object({ created: z.array(z.string()).describe("What the commit made in Answerable ID"), existing: z.array(z.string()).describe("What it found already in place") }),
     async prepare({ organizationId: id, mcp, everyone = false }, context) {
+      fresh(context.principal)
       const { organisation: row, target: version } = await organisation(id, context)
       const resource = `${origin}/${mcp}/mcp`
       const registered = await calls.versioned<Resource>(`/resources/${encodeURIComponent(resource)}`, context,

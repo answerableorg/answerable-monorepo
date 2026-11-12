@@ -255,7 +255,7 @@ A write that ID takes without a precondition says so in its preview's warnings.
 
 **Which.** `organisations_disable`, `organisations_enable`, `staff_grant`, `staff_revoke` and `users_retireemail`; and any write whose organisation is the platform organisation, since it decides who is staff and how staff sign in. A tool that [stops someone](#stopping-someone), aimed at a member of staff, needs the owner role too.
 
-**The same recent sign-in, from an admin.** Any other write that lets people in or changes how a firm signs in: `sso_set`, `users_enable`, `members_reinstate`, and the writes on [magic links](#magic-links). A write that stops one named person never waits for it: `users_disable`, and `members_remove` outside the platform organisation.
+**The same recent sign-in, from an admin.** Any other write that lets people in or changes how a firm signs in: `access_grant`, `access_enable`, `groups_addmember`, `standalone_enable`, `toolbox_enable`, `sso_set`, `users_enable`, `members_reinstate`, and the writes on [magic links](#magic-links). A write that stops someone never waits for it: `access_revoke`, `users_disable`, and `members_remove` outside the platform organisation.
 
 **Who.** An owner, or an admin for the writes just above, whose last sign-in at their company's directory is within `ADMIN_FRESH_SECONDS`, 1,800 seconds by default. The sign-in time is the token's `upstream_auth_time`. An admin preparing a write to the platform organisation, or aiming a stopping tool at staff, gets `PERMISSION_DENIED`.
 
