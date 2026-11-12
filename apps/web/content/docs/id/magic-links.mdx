@@ -92,7 +92,7 @@ The record is a TXT record at `_answerable-challenge.<domain>` with the value `a
 
 ## What a sign-in by email is worth
 
-Access tokens and UserInfo carry `authentication_method`: `magic_link` for a sign-in by link or code, `directory` for a company directory. `@answerable/auth` gives it to a server as `authenticationMethod`, and `null` for a token from before the claim, so an absent claim never reads as a directory sign-in. The method is fixed when the authorisation is made, and a refreshed token keeps it.
+Access tokens and UserInfo carry `authentication_method`: `magic_link` for a sign-in by link or code, `directory` for a company directory. `@answerable/auth` gives it to a server as `authenticationMethod` and refuses a token without it, so an absent claim never reads as a directory sign-in. The method is fixed when the authorisation is made, and a refreshed token keeps it.
 
 **It shows only that the person could read that mailbox.** It says nothing about their company's MFA or conditional access. An application decides what a `magic_link` sign-in may do, and can ask for more for anything sensitive. [Your MCP's sign-in](/docs/mcp/sign-in#what-your-tool-receives) shows where a tool reads it.
 
