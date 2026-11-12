@@ -147,7 +147,7 @@ describe("unit: waitlist", () => {
     const h = harness()
     await h.submit("a@b.com", "GB", acme, ada)
     expect(await h.submit("a@b.com", "FR")).toEqual(success)
-    expect(h.rows[0].country_code).toBe("FR")
+    expect(h.rows[0].country_code).toBe("GB")
     expect(h.rows[0].full_name).toBe(ada)
   })
   test("rejects a headcount outside the bands", async () => {
@@ -185,7 +185,7 @@ describe("unit: waitlist", () => {
     const h = harness()
     await h.submit("a@b.com", "GB", acme)
     expect(await h.submit("a@b.com", "FR")).toEqual(success)
-    expect(h.rows[0].country_code).toBe("FR")
+    expect(h.rows[0].country_code).toBe("GB")
     expect(h.rows[0].business_name).toBe("Acme Architects")
     expect(h.rows[0].business_headcount).toBe("11–50")
   })

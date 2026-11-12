@@ -47,9 +47,14 @@ export function parseSheetsConfig(
 
 /**
  * The slice of GoogleSpreadsheetCell the upsert needs. Never its `value`, which
- * runs a string starting with "=" as a formula; a name is free text.
+ * runs a string starting with "=" as a formula; a name is free text. A write
+ * goes through `stringValue`; whether a cell holds anything is read from
+ * `formattedValue`, which is null for an empty cell and whatever its type.
  */
-export type Cell = { stringValue: string | undefined }
+export type Cell = {
+  stringValue: string | undefined
+  readonly formattedValue: string | null
+}
 
 export type GridRange = {
   startRowIndex?: number
@@ -157,19 +162,25 @@ export function createSheetsClient(
       )
       if (found !== -1) {
         const existingRow = found + 2
-        // Save only client-owned cells, preserving the reader's edits.
+        // Anyone who knows an address can post it, so a repeat signup moves
+        // last_seen_at and fills what is empty, and changes no cell that
+        // holds a value: a registrant's row is not theirs to rewrite.
         const updates = [
           ["last_seen_at", at],
           ["country_code", countryCode],
           ["country_name", countryName],
           ...Object.entries(asked),
         ].map(([column, value]) => ({
+          column,
           address: `${columnLetter(sheet.headerValues.indexOf(column))}${existingRow}`,
           value,
         }))
         await sheet.loadCells(updates.map(({ address }) => address))
-        for (const { address, value } of updates) {
-          sheet.getCellByA1(address).stringValue = value
+        for (const { column, address, value } of updates) {
+          const cell = sheet.getCellByA1(address)
+          if (column === "last_seen_at" || !cell.formattedValue?.trim()) {
+            cell.stringValue = value
+          }
         }
         await sheet.saveUpdatedCells()
         return { outcome: "updated", ...header }

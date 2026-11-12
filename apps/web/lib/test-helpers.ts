@@ -100,6 +100,9 @@ export function fakeWorksheet(
       const key = header()[column]
       if (!key || !rows[row]) throw new Error(`No cell at ${address}`)
       return {
+        get formattedValue() {
+          return rows[row][key] || null
+        },
         get stringValue() {
           return String(pending.get(address)?.value ?? rows[row][key])
         },
