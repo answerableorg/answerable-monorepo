@@ -1,7 +1,8 @@
 // The one place the declared MCPs become data for the Toolbox and the deployment, from every mcps/*/mcp.json and manifest:
 // - charts/answerable/mcps.json, the chart's list;
 // - mcps/toolbox/src/mounted.generated.ts, every MCP the Toolbox serves, in its hub, alone at /<name>/mcp, or both;
-// - the dependencies of mcps/toolbox/package.json, on the workspaces of those MCPs.
+// - the dependencies of mcps/toolbox/package.json, on the workspaces of those MCPs;
+// - infra/ops/src/toolbox-scopes.generated.ts, the scopes the register Job gives the Toolbox's resource in ID.
 // bun mcp new, add tool and check write them; generate.test.ts fails when a committed file differs. Never edit them by hand.
 import { existsSync } from "node:fs"
 import { join } from "node:path"
@@ -14,6 +15,9 @@ const chartList = "charts/answerable/mcps.json"
 
 /** The Toolbox's workspace and its list, which every MCP is in. */
 const toolbox = { workspace: "mcps/toolbox", list: "mcps/toolbox/src/mounted.generated.ts" }
+
+/** The ops workspace, whose image runs the register Job, and the Toolbox resource's scopes it carries. */
+const ops = { workspace: "infra/ops", scopes: "infra/ops/src/toolbox-scopes.generated.ts" }
 
 // An MCP's workspace is @answerable/mcp-<name>.
 const prefix = "@answerable/mcp-"
@@ -44,18 +48,41 @@ async function packageJsonOf(path: string, served: readonly Declaration[]) {
   return json(file)
 }
 
+/**
+ * The Toolbox resource's allowed scopes in ID: `offline_access`, `toolbox`, `toolbox/approve`, and the grant strings of each MCP its hub serves
+ * (`toolbox` or `both`): its name, and each domain and capability of its manifest's tools, the commit tools aside. One without a manifest yet adds its name.
+ */
+export function toolboxScopesOf(served: readonly { name: string; manifest: Manifest | undefined }[]) {
+  const scopes = new Set(["offline_access", "toolbox", "toolbox/approve"])
+  for (const { name, manifest } of served) {
+    scopes.add(name)
+    for (const { identity, kind } of manifest?.tools ?? []) if (kind !== "commit") scopes.add(identity.split(".")[0]!).add(identity)
+  }
+  return [...scopes].sort()
+}
+
+// The register Job's list of the Toolbox resource's scopes: the ops image carries it, so that the Job needs no MCP's code.
+const scopesFileOf = (scopes: readonly string[]) => [
+  "// Written by bun mcp from each manifest.json of an MCP the Toolbox's hub serves (scripts/mcp/generate.ts). Never edit it by hand.",
+  "",
+  "/** The Toolbox resource's allowed scopes in ID, which the register Job sets: `offline_access`, `toolbox`, `toolbox/approve` and every grant string of its hub. */",
+  `export const toolboxScopes: readonly string[] = [\n${scopes.map(scope => `  ${JSON.stringify(scope)},`).join("\n")}\n]`,
+  "",
+].join("\n")
+
 /** The scopes a manifest's tools, prompts and resources ask for, sorted: those of the MCP's resource in ID, `offline_access` aside. */
 export const scopesOf = (manifest: Manifest) => [...new Set([...manifest.tools, ...manifest.prompts, ...manifest.resources].flatMap(item => item.scopes))].sort()
 
 /** Every generated file's text, by path. The Toolbox's list and dependencies are written only where its workspace is. */
 export async function generatedFiles(root: string): Promise<Record<string, string>> {
   const declared = await declarations(root)
-  const mcps = await Promise.all(declared.map(async ({ name, serve, database }) => {
-    const manifest = await manifestOf(root, name)
-    return { name, serve, database, scopes: manifest ? scopesOf(manifest) : [] }
-  }))
+  const manifests = await Promise.all(declared.map(async ({ name }) => manifestOf(root, name)))
+  const mcps = declared.map(({ name, serve, database }, index) => ({ name, serve, database, scopes: manifests[index] ? scopesOf(manifests[index]) : [] }))
   const list = { $comment: "Written by bun mcp from mcps/*/mcp.json and each manifest.json (scripts/mcp/generate.ts); never edit it by hand", mcps }
   const files: Record<string, string> = { [chartList]: json(list) }
+  if (existsSync(join(root, ops.workspace, "package.json"))) {
+    files[ops.scopes] = scopesFileOf(toolboxScopesOf(declared.flatMap(({ name, serve }, index) => (serve === "standalone" ? [] : [{ name, manifest: manifests[index] }]))))
+  }
   if (existsSync(join(root, toolbox.workspace, "package.json"))) {
     files[toolbox.list] = listOf(declared)
     files[`${toolbox.workspace}/package.json`] = await packageJsonOf(join(root, toolbox.workspace, "package.json"), declared)

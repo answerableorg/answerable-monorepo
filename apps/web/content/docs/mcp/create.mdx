@@ -44,7 +44,7 @@ It checks every answer, then runs these steps and prints a line for each. A step
 
 <CliSteps command="new" />
 
-It makes real objects in your development Postgres: [Undo a local MCP](#undo-a-local-mcp) removes them. It also rewrites the lists the deployment and the Toolbox read: `charts/answerable/mcps.json`, and the Toolbox's list and dependencies, which carry every MCP whatever its `serve`. Never edit them by hand. [What to commit](#what-to-commit) lists every file to commit.
+It makes real objects in your development Postgres: [Undo a local MCP](#undo-a-local-mcp) removes them. It also rewrites the lists the deployment and the Toolbox read: `charts/answerable/mcps.json`, and the Toolbox's list and dependencies, which carry every MCP whatever its `serve`, and the Toolbox resource's scopes, which the register Job sets in ID. Never edit them by hand. [What to commit](#what-to-commit) lists every file to commit.
 
 ## What it writes
 
@@ -98,6 +98,7 @@ Commit every file `bun mcp` wrote or rewrote, with your change. `git status` sho
 - everything under `mcps/acme`;
 - `charts/answerable/mcps.json`, the deployment's list;
 - `mcps/toolbox/package.json` and `mcps/toolbox/src/mounted.generated.ts`, the Toolbox's dependencies and list;
+- `infra/ops/src/toolbox-scopes.generated.ts`, the grant strings of every MCP the Toolbox's hub serves, which the register Job allows on the Toolbox's resource in ID;
 - `bun.lock`, which `bun install` updates: CI and the image build install from it and refuse a stale one;
 - `packages/config/inventory.json` or `.env.example`, when the check rewrites them: an MCP with a database of its own adds its variables to the inventory.
 

@@ -38,7 +38,7 @@ export const definitions = {
     },
     steps: [
       { name: "write", does: "Writes `mcps/<name>`" },
-      { name: "generate", does: "Writes `charts/answerable/mcps.json` and the list the Toolbox serves, with its dependencies" },
+      { name: "generate", does: "Writes `charts/answerable/mcps.json`, the list the Toolbox serves, with its dependencies, and the scopes the register Job gives the Toolbox's resource" },
       { name: "install", does: "Runs `bun install`, which links the new workspace" },
       { name: "migration", does: "Writes the first migration, `drizzle/0000_initial.sql`" },
       { name: "database", does: "Creates the MCP's schema on the development Postgres and applies the migration" },

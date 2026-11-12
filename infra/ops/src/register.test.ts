@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { DeclaredMcp } from "@answerable/mcp-postgres"
 import { register } from "./register"
 import { fakeId, memoryStore, type FakeId } from "./testing"
+import { toolboxScopes } from "./toolbox-scopes.generated"
 
 const admin = "https://id.example/api/admin"
 const toolboxResource = "https://toolbox.example/mcp"
@@ -282,20 +283,25 @@ describe("the MCPs of the list", () => {
     expect(printed()).toContain(`${acme}: its manifest no longer declares acme:write, so its resource stops allowing it`)
   })
 
-  test("the Toolbox's resource is never narrowed: what enable calls added stays, and a deploy writes nothing to it", async () => {
+  test("the Toolbox's resource allows every grant string of the MCPs its hub serves, which the deploy that ships one adds; a scope it holds stays", async () => {
     const { id, run, writes } = setup()
     await run()
-    // The Toolbox's enable operation widens its resource with each enabled provider's grant strings (mcps/toolbox/src/admin-enable.ts).
+    expect(id.resourceOf(toolboxResource).allowedScopes).toEqual([...toolboxScopes])
+    expect(toolboxScopes).toEqual(expect.arrayContaining(["e2e", "e2e/records", "e2e/records.list", "offline_access", "toolbox", "toolbox/approve"]))
+    // An environment registered before a capability shipped, holding a grant string of an MCP removed since: the next deploy adds the capability.
     const toolbox = id.resourceOf(toolboxResource)
-    Object.assign(toolbox, { allowedScopes: ["e2e", "e2e/records", "offline_access", "toolbox"], revision: toolbox.revision + 1 })
+    Object.assign(toolbox, { allowedScopes: [...toolboxScopes.filter(scope => scope !== "e2e/records.list"), "gone"], revision: toolbox.revision + 1 })
     const from = id.calls().length
     await run({ rootSecret: undefined })
-    expect(id.resourceOf(toolboxResource).allowedScopes).toEqual(["e2e", "e2e/records", "offline_access", "toolbox"])
-    expect(writes(from).filter(write => write.includes("/resources/"))).toEqual([])
+    expect(writes(from).filter(write => write.includes("/resources/"))).toEqual([`ops-register PATCH /resources/${encodeURIComponent(toolboxResource)}`])
+    expect(id.resourceOf(toolboxResource).allowedScopes).toEqual([...toolboxScopes, "gone"].sort())
+    const after = id.calls().length
+    await run({ rootSecret: undefined })
+    expect(writes(after).filter(write => write.includes("/resources/"))).toEqual([])
     // A name changed by hand is put back, and the scopes it holds stay with it.
     Object.assign(toolbox, { name: "Renamed", revision: toolbox.revision + 1 })
     await run({ rootSecret: undefined })
-    expect(id.resourceOf(toolboxResource)).toMatchObject({ name: "Toolbox", allowedScopes: ["e2e", "e2e/records", "offline_access", "toolbox"] })
+    expect(id.resourceOf(toolboxResource)).toMatchObject({ name: "Toolbox", allowedScopes: [...toolboxScopes, "gone"].sort() })
   })
 
   test("an MCP removed from the list keeps its rows, and register no longer reads them", async () => {

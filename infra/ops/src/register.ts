@@ -57,8 +57,9 @@ const roles = ["team", "admin", "owner"] as const
  * Claude Code client, `claude-code-<name>`, and their link.
  *
  * Every resource, client and capability is read first: one ID lacks is created with its `Idempotency-Key`; one that differs is changed with `If-Match`,
- * under `<key>-r<revision>`, in the fields that differ. Scopes and redirect URIs only widen: the Toolbox's resource keeps what enable calls added, and a
- * capability gains a scope declared since it was made (the admin MCP's `platform:users`). An MCP's own resource follows its manifest, and a scope the
+ * under `<key>-r<revision>`, in the fields that differ. Scopes and redirect URIs only widen: the Toolbox's resource gains the grant strings of an MCP
+ * its hub serves on the deploy that ships it and keeps those it holds, and a capability gains a scope declared since it was made (the admin MCP's
+ * `platform:users`). An MCP's own resource follows its manifest, and a scope the
  * manifest dropped is logged as it goes. An MCP removed from the list keeps its rows.
  * Links are made under `<key>-r<revision>` of the client when its read lacks them; entitlements and groups are created when missing.
  * Each machine client's secret is stored the moment ID answers it, and one that exists while its secret is not stored is rotated. With `staff`,

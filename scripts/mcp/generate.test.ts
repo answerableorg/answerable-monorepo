@@ -30,6 +30,48 @@ test("an MCP is listed with its scopes, and one without a manifest yet with none
   }
 })
 
+test("the register Job's Toolbox scopes are the grant strings of every MCP its hub serves, commit tools aside, written where the ops workspace is", async () => {
+  const tools = [
+    { name: "acme_commit", identity: "acme/commit", kind: "commit", scopes: ["acme:write"] },
+    { name: "acme_notes_add", identity: "acme/notes.add", kind: "mutate", scopes: ["acme:write"] },
+    { name: "acme_files_list", identity: "acme/files.list", kind: "read", scopes: ["acme:read"] },
+  ]
+  const repository = await tempRepository({
+    "mcps/acme/mcp.json": '{ "serve": "both", "database": "shared" }\n',
+    "mcps/acme/manifest.json": JSON.stringify({ description: "Notes.", tools, prompts: [], resources: [] }),
+    // Served alone: none of its grant strings is the Toolbox's. Without a manifest yet: its name alone.
+    "mcps/beta/mcp.json": '{ "serve": "standalone", "database": "own" }\n',
+    "mcps/beta/manifest.json": JSON.stringify({ description: "Beta.", tools: [{ name: "beta_x_get", identity: "beta/x.get", kind: "read", scopes: [] }], prompts: [], resources: [] }),
+    "mcps/gamma/mcp.json": '{ "serve": "toolbox", "database": "shared" }\n',
+    "infra/ops/package.json": "{}",
+  })
+  try {
+    expect((await generatedFiles(repository.root))["infra/ops/src/toolbox-scopes.generated.ts"]).toBe(`// Written by bun mcp from each manifest.json of an MCP the Toolbox's hub serves (scripts/mcp/generate.ts). Never edit it by hand.
+
+/** The Toolbox resource's allowed scopes in ID, which the register Job sets: \`offline_access\`, \`toolbox\`, \`toolbox/approve\` and every grant string of its hub. */
+export const toolboxScopes: readonly string[] = [
+  "acme",
+  "acme/files",
+  "acme/files.list",
+  "acme/notes",
+  "acme/notes.add",
+  "gamma",
+  "offline_access",
+  "toolbox",
+  "toolbox/approve",
+]
+`)
+  } finally {
+    await repository.remove()
+  }
+  const bare = await tempRepository({ "mcps/retired.json": "[]" })
+  try {
+    expect(Object.keys(await generatedFiles(bare.root))).toEqual(["charts/answerable/mcps.json"])
+  } finally {
+    await bare.remove()
+  }
+})
+
 test("the Toolbox's list imports the provider of every MCP, with where it is served, its database mode and an own MCP's variable, and its dependencies follow", async () => {
   const declare = (name: string, serve: string, database = "shared") => ({ [`mcps/${name}/mcp.json`]: JSON.stringify({ serve, database }) })
   const repository = await tempRepository({
