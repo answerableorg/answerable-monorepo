@@ -118,7 +118,7 @@ export const idConfig = defineConfig(
     BETTER_AUTH_TRUSTED_ORIGINS: {
       schema: z.string(),
       fallback: "",
-      doc: "Origins trusted besides ID's own, separated by commas: browser origins and identity-provider endpoints; production requires them, each an exact origin with no wildcard",
+      doc: "The identity-provider endpoint origins SSO discovery and sign-in may reach, separated by commas; production requires them, each an exact origin with no wildcard",
       source: "chart",
     },
     ROOT_ADMIN_SECRET: {

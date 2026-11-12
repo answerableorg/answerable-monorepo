@@ -201,16 +201,16 @@ test("a client disabled after its origin was cached loses the header when the ca
   expect(await origins.allowed(webOrigin)).toBe(false);
 });
 
-test("a trusted origin keeps its credentialed policy on every /auth path", async () => {
-  const response = await token(fixture.trustedOrigin);
-  expect(response.headers.get("access-control-allow-origin")).toBe(
-    fixture.trustedOrigin,
-  );
-  expect(response.headers.get("access-control-allow-credentials")).toBe("true");
-  const session = await fixture.app.request("/auth/get-session", {
-    headers: { origin: fixture.trustedOrigin },
-  });
-  expect(session.headers.get("access-control-allow-credentials")).toBe("true");
+test("a trusted origin gets no CORS grant on any /auth path", async () => {
+  for (const response of [
+    await token(fixture.trustedOrigin),
+    await fixture.app.request("/auth/get-session", {
+      headers: { origin: fixture.trustedOrigin },
+    }),
+  ]) {
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+  }
 });
 
 test("the authorization, session and sign-in paths get no CORS header for a client origin", async () => {

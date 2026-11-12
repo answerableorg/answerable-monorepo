@@ -90,14 +90,10 @@ export function createApp(services: AppServices) {
 
   app.use("*", limitRequestBody);
 
-  // Better Auth's browser calls keep the configured, credentialed origin policy.
-  // The admin API sends no CORS headers; its principal still checks a cookie
-  // caller's Origin. A public client's browser app may call the token
-  // endpoint from its redirect origin, without credentials.
-  const trustedCors = cors({
-    origin: services.environment.trustedOrigins,
-    credentials: true,
-  });
+  // No browser calls ID with credentials from another origin, so no path sends
+  // a credentialed CORS grant. The admin API sends no CORS headers; its
+  // principal still checks a cookie caller's Origin. A public client's browser
+  // app may call the token endpoint from its redirect origin, without credentials.
   const clientOrigins =
     services.clientOrigins ?? createClientOrigins(services.db);
   app.use("/auth/*", async (context, next) => {
@@ -114,7 +110,7 @@ export function createApp(services: AppServices) {
         allowMethods: ["POST"],
         allowHeaders: ["Content-Type"],
       })(context, next);
-    return trustedCors(context, next);
+    return next();
   });
 
   app.route("/api/admin/v1", createAdminApp(services));
@@ -249,20 +245,17 @@ export function createApp(services: AppServices) {
       if (answer) return answer;
     }
     logRejectedSignIn(context, response);
+    // The provider's own response carries none of the headers set on the
+    // context, so the request id is copied onto it.
+    const answer = new Response(response.body, response);
+    answer.headers.set("x-request-id", context.get("requestId"));
+    // Transport-level refusals the provider does not decorate must not be cached.
     if (
       context.req.path === "/auth/oauth2/token" &&
-      !response.headers.has("cache-control")
-    ) {
-      // Transport-level refusals the provider does not decorate must not be cached.
-      const uncached = new Headers(response.headers);
-      uncached.set("Cache-Control", "no-store");
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: uncached,
-      });
-    }
-    return response;
+      !answer.headers.has("cache-control")
+    )
+      answer.headers.set("Cache-Control", "no-store");
+    return answer;
   });
 
   app.onError(problemHandler);
