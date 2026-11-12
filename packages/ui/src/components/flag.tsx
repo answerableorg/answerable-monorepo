@@ -15,6 +15,7 @@ export function Flag({
       width={20}
       height={15}
       loading="lazy"
+      referrerPolicy="no-referrer"
       decoding="async"
       data-slot="flag"
       className={cn("h-3.5 w-5 shrink-0 object-contain", className)}
