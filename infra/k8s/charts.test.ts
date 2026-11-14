@@ -239,8 +239,8 @@ describe("charts/answerable", () => {
         expect(env(register, "OPS_MCPS").value).toBe(env(bootstrap, "OPS_MCPS").value)
         const replicas = name === "values-local.yaml" ? 1 : 2
         expect(env(register, "OPS_START_DEPLOYMENTS").value).toBe(registered.map(server => `${server}=${replicas}`).join(","))
-        // A staff directory only where the overlay names one: staging names the local ID setup's.
-        if (name === "values-civo-staging.yaml") {
+        // A staff directory only where the overlay names one: staging and production name the local ID setup's.
+        if (name === "values-civo-staging.yaml" || name === "values-civo-production.yaml") {
           expect(env(register, "OPS_STAFF_DOMAIN").value).toBe("omniaccelerator.ai")
           expect(env(register, "OPS_ENTRA_TENANT").value).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)
         } else {
